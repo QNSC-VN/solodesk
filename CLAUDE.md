@@ -1012,3 +1012,102 @@ Verified: typecheck clean, connector-hub e2e suite green (12/12
 unchanged — no adapter here gets a live-hitting e2e test, same precedent
 as GHTK/Shopee/TikTok Shop), dev server hot-reloaded cleanly
 (`LazadaModule dependencies initialized`).
+
+## ml-analytics — the 4th deployable, first non-TypeScript service
+
+Picked as the next module after Lazada: the biggest remaining gap in
+README's "not yet built" list, and the only one with an existing, real
+data source to work from (`sales.orders`) rather than needing design/UX
+input (mobile/web) or unbuilt infra (SNS/SQS, ClickHouse — docs Section
+4.3/17 name these as ml-analytics's eventual real path, not needed for a
+first cut that just proves the service/role/calling-convention).
+
+**Scope, deliberately cut down from docs Section 8's target stack**
+("pandas/statsmodels/prophet, Vietnamese Whisper fine-tuning"): this first
+cut is one endpoint, `GET /v1/forecast/:tenant_id`, using a linear-trend
+least-squares fit (`numpy.polyfit`) over the tenant's own confirmed
+`sales.orders` history — a real, defensible statistical baseline, not
+Prophet/ARIMA and not a fabricated number. Whisper/STT fine-tuning isn't
+touched at all. Both are named, not silently dropped — same "documented
+scope cut" discipline as every other explicit scope decision in this repo
+(LiteLLM gateway, the e-invoice connectors, Booking.com).
+
+**Why Python here specifically, not another TS service**: docs Section 8's
+own rationale ("genuinely different ecosystem — pandas/statsmodels/
+prophet, Whisper fine-tuning") — this is the one module where the target
+tooling itself isn't in Node's ecosystem. Structured to mirror the other 3
+services' conventions as closely as a different language allows: FastAPI
++ asyncpg (not SQLAlchemy — YAGNI until real complexity needs an ORM),
+`pydantic-settings` as the zod/`env.schema.ts` equivalent, a hand-written
+`db/migrate.py` applying `db/migrations/*.sql` and tracked in the SAME
+shared `public.schema_migrations` table the other 3 services already use
+— confirmed by querying it directly before assuming this would work; all
+4 services' migration filenames just need to stay distinct, same
+convention already holding across 20+ prior migrations.
+
+**`solodesk_ml`**: SELECT-only on `sales.orders`, same least-privilege
+role-per-service pattern as the other 3, same `SET LOCAL app.tenant_id`
+(via parameterized `set_config`, correct from day one — the other 3
+services all had to fix a raw-string-interpolation version of this later,
+see the architecture-audit section above; no reason to introduce that bug
+here first).
+
+**Service-to-service auth**: `INTERNAL_SERVICE_TOKEN`, the SAME shared
+secret backend-api's `InternalServiceGuard` already uses for
+connector-hub → backend-api — this is genuinely the 2nd consumer that
+guard's own doc comment said to "revisit before a second consumer needs
+it." Confirmed the same shape (pre-shared secret, constant-time compared —
+`hmac.compare_digest` in Python, `timingSafeEqual` in Node) generalizes
+fine without a redesign; ml-analytics has no per-user JWT path at all,
+since it's never called except from inside an agent-orchestrator Temporal
+Activity (docs Section 5.5's rule — the same gap `cxgenie-be`'s raw
+synchronous HTTP calls to `cxgenie-core-ai` left open, avoided by
+construction here since the ONLY call site, `get-sales-forecast.tool.ts`,
+already runs inside `run-agent-turn.activity.ts`, itself an Activity).
+
+**No CI workflow for this service.** Not an oversight: docs Section 17.3
+already names "a Python build/publish action for ml-analytics" as
+genuinely missing from this org's shared `qnsc-ci` composite actions —
+that's an external repo this session can't add to, and writing an
+`ml-analytics-ci.yml` that references a nonexistent action would be a
+CI file that fails on its first run, worse than no file. Tests run via
+`pytest` locally; automate once that action exists.
+
+**Bugs found and fixed while building this**:
+1. `pytest` failed with `RuntimeError: Event loop is closed` on the 2nd/3rd
+   async test — `app/db.py`'s asyncpg pool is a module-level singleton
+   (correct for the real running app: created once, reused for the
+   process's lifetime), but pytest-asyncio's default per-test event loop
+   meant test 2 tried to reuse a pool created under test 1's already-closed
+   loop. Fixed by setting `asyncio_default_fixture_loop_scope`/
+   `asyncio_default_test_loop_scope = session` in `pytest.ini`, not by
+   changing the pool's design (which is correct for production).
+2. My own `test_increasing_trend_projects_forward` failed on
+   `400.00000000000006 != 400.0` — floating-point imprecision in the
+   linear-regression fit itself, exactly the kind of thing a strict `==`
+   shouldn't assert on for a statistical (not stored-money) computation.
+   Fixed the test with `pytest.approx`, not the forecast math — a forecast
+   is inherently approximate, unlike the exact-decimal money.ts guarantees
+   this repo enforces for actual financial records.
+3. Manual smoke test (a real conversation, `MOCK_LLM_RESPONSES=true`,
+   asking a Vietnamese forecast question) first got a REAL 401 from
+   Anthropic instead of the mocked reply — a stale worker process left
+   over from a previous dev-server restart (not killed by an earlier
+   `pkill`, timing-raced with a respawn) was still polling the same
+   `agent-tasks` task queue without `MOCK_LLM_RESPONSES` set, and Temporal
+   load-balanced the task to it instead of the freshly-restarted one. Same
+   zombie-worker-process class of issue already documented in this file's
+   "prepare setup all" section — killed the stale PIDs, confirmed exactly
+   one worker process before retrying, then got the real mocked forecast
+   reply back correctly.
+
+Verified: typecheck clean (agent-orchestrator), `pytest` 14/14 (ml-analytics:
+forecast math, real-Postgres API tests, role isolation), agent-orchestrator
+e2e 32/32 (the new tool's test covers only the deterministic config-error
+path — no live ml-analytics dependency in CI, see above). Real end-to-end
+manual smoke test: a real Vietnamese conversation message through the
+actual running `agent-conversation` workflow → `get_sales_forecast` tool →
+real HTTP call to a real running ml-analytics instance → real Postgres
+query via `solodesk_ml` → real linear-trend forecast computed from real
+seeded order data → correct `[MOCK]`-prefixed reply, confirming the full
+4-service chain actually works, not just each piece in isolation.

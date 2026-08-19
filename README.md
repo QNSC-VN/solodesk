@@ -42,15 +42,37 @@ GitHub repo, multiple independently-deployable services.
   `knowledge.chunks` — seeded ONLY with clearly-labeled sample/placeholder
   FAQ content (`scripts/ingest-knowledge.ts`), not a real corpus of
   Vietnamese tax/registration law, see that script's header comment.
-- Postgres RLS + non-superuser app role in ALL THREE services, done FIRST
+  Also calls the 4th deployable's `/v1/forecast` endpoint via a new
+  `get_sales_forecast` tool, from inside this Activity (never
+  synchronously outside a Workflow/Activity).
+- `services/ml-analytics` — the 4th deployable, and the first NOT in
+  Node/TypeScript: Python/FastAPI + asyncpg. Own Postgres role
+  `solodesk_ml`, SELECT-only on `sales.orders`, same least-privilege/RLS
+  pattern as the other 3 (`db/migrations/0001_provision_ml_role.sql`,
+  applied via `db/migrate.py` — same hand-written-migration, shared
+  `public.schema_migrations` tracking table as all 3 other services). One
+  real endpoint (`GET /v1/forecast/:tenant_id`): a linear-trend baseline
+  forecast over the tenant's own confirmed order history — deliberately
+  NOT the Prophet/statsmodels stack docs Section 8 names as this
+  service's eventual target (heavier tooling, a later upgrade once this
+  first cut has proven the service/role/calling-convention), and Whisper
+  STT fine-tuning is out of scope entirely for now. Called only via a
+  pre-shared `INTERNAL_SERVICE_TOKEN` (2nd consumer of backend-api's
+  `InternalServiceGuard` mechanism), never a per-user JWT. No CI workflow
+  yet — needs a Dockerfile and a Python build/publish `qnsc-ci` composite
+  action this org doesn't have yet (docs Section 17.3 already flags this
+  as a genuine, not-yet-filled gap); tests run locally via `pytest`.
+- Postgres RLS + non-superuser app role in ALL FOUR services, done FIRST
   and correctly — read `services/backend-api/db/migrations/0002_provision_app_role.sql`,
   `services/connector-hub/db/migrations/0001_provision_connector_role.sql`,
-  and `services/agent-orchestrator/db/migrations/0001_provision_agent_role.sql`
+  `services/agent-orchestrator/db/migrations/0001_provision_agent_role.sql`,
+  and `services/ml-analytics/db/migrations/0001_provision_ml_role.sql`
   before adding any tenant-scoped table in any service.
 - The cross-tenant leak tests (`services/backend-api/test/tenant-isolation.e2e-spec.ts`,
   `services/connector-hub/test/role-isolation.e2e-spec.ts`,
-  `services/agent-orchestrator/test/role-isolation.e2e-spec.ts`) must never
-  be weakened to make them pass.
+  `services/agent-orchestrator/test/role-isolation.e2e-spec.ts`,
+  `services/ml-analytics/tests/test_role_isolation.py`) must never be
+  weakened to make them pass.
 
 - connector-hub's SePay webhook forwards a verified payment straight into
   backend-api's `payment-reconcile` (`POST /internal/payments/by-invoice-number`,
@@ -58,22 +80,27 @@ GitHub repo, multiple independently-deployable services.
   narrow MVP mechanism, not SNS/SQS or a general service-mesh scheme yet).
   Verified end-to-end against two live dev servers — see CLAUDE.md.
 
-Not yet built: `apps/mobile`, `apps/web-*`, `services/ml-analytics`.
+Not yet built: `apps/mobile`, `apps/web-*`.
 
 ## Local dev
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # postgres (pgvector-enabled) + valkey, shared by all three services
+docker compose -f docker-compose.dev.yml up -d   # postgres (pgvector-enabled) + valkey, shared by all four services
 brew install temporal                            # agent-orchestrator only
 cp services/backend-api/.env.example services/backend-api/.env
 cp services/connector-hub/.env.example services/connector-hub/.env
 cp services/agent-orchestrator/.env.example services/agent-orchestrator/.env
-# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY per each .env.example's comments
+cp services/ml-analytics/.env.example services/ml-analytics/.env
+# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY / INTERNAL_SERVICE_TOKEN per each .env.example's comments
 pnpm install
 pnpm --filter @solodesk/backend-api db:migrate
 pnpm --filter @solodesk/connector-hub db:migrate
 pnpm --filter @solodesk/agent-orchestrator db:migrate   # AFTER backend-api's — see its 0001 migration
 pnpm --filter @solodesk/agent-orchestrator ingest:knowledge  # seeds sample Layer B knowledge chunks — needs a real VOYAGE_API_KEY
+cd services/ml-analytics && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+python3 db/migrate.py   # AFTER backend-api's — GRANTs on sales.orders
+uvicorn app.main:app --host 0.0.0.0 --port 3003   # separate terminal
+cd ../..
 pnpm --filter @solodesk/backend-api dev          # :3000
 pnpm --filter @solodesk/connector-hub dev        # :3001
 temporal server start-dev                        # separate terminal — :7233 gRPC, :8233 Web UI

@@ -51,6 +51,14 @@ export const envSchema = z
     VOYAGE_API_KEY: z.string().min(1, 'Real key entered by the user — see CLAUDE.md. A placeholder value fails every knowledge-base search loudly, not silently.'),
     VOYAGE_API_BASE_URL: z.string().default('https://api.voyageai.com/v1'),
     VOYAGE_EMBEDDING_MODEL: z.string().default('voyage-3.5'),
+
+    // ml-analytics — called ONLY from inside this Activity (never
+    // synchronously from an HTTP handler outside a Workflow/Activity, docs
+    // Section 5.5's rule), same as backend-api/connector-hub's internal
+    // service-to-service call. Shared secret MUST match ml-analytics's own
+    // INTERNAL_SERVICE_TOKEN exactly.
+    ML_ANALYTICS_BASE_URL: z.string().default('http://localhost:3003'),
+    INTERNAL_SERVICE_TOKEN: z.string().min(32, "INTERNAL_SERVICE_TOKEN must match ml-analytics's value exactly — see its config.py"),
   })
   .refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
     message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production.',

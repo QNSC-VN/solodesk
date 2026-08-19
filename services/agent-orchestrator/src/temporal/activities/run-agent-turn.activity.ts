@@ -7,6 +7,7 @@ import { getStockLevel, getStockLevelToolSchema, GET_STOCK_LEVEL_TOOL_NAME } fro
 import { getOutstandingInvoices, getOutstandingInvoicesToolSchema, GET_OUTSTANDING_INVOICES_TOOL_NAME } from './tools/get-outstanding-invoices.tool';
 import { getUpcomingBookings, getUpcomingBookingsToolSchema, GET_UPCOMING_BOOKINGS_TOOL_NAME } from './tools/get-upcoming-bookings.tool';
 import { searchKnowledgeBase, searchKnowledgeBaseByKeyword, searchKnowledgeBaseToolSchema, SEARCH_KNOWLEDGE_BASE_TOOL_NAME } from './tools/search-knowledge-base.tool';
+import { getSalesForecast, getSalesForecastToolSchema, GET_SALES_FORECAST_TOOL_NAME } from './tools/get-sales-forecast.tool';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -68,6 +69,13 @@ const TOOLS: Record<string, { schema: Anthropic.Tool; handler: (tenantId: string
       return searchKnowledgeBase({ query });
     },
   },
+  [GET_SALES_FORECAST_TOOL_NAME]: {
+    schema: getSalesForecastToolSchema,
+    handler: async (tenantId, rawInput) => {
+      const { days } = rawInput as { days?: number };
+      return getSalesForecast({ tenantId, ...(days !== undefined ? { days } : {}) });
+    },
+  },
 };
 
 const TOOL_SCHEMAS = Object.values(TOOLS).map((t) => t.schema);
@@ -124,6 +132,12 @@ async function runAgentTurnMocked(input: RunAgentTurnInput): Promise<RunAgentTur
     }
     const lines = result.results.map((r) => `${r.title} (${r.source})`).join('; ');
     return { assistantMessage: `[MOCK] Tìm thấy ${result.count} tài liệu tham khảo: ${lines}.` };
+  }
+
+  if (/(du bao|forecast|xu huong doanh thu)/.test(message)) {
+    const result = await getSalesForecast({ tenantId: input.tenantId });
+    const lines = result.forecast.map((p) => `${p.day}: ${p.projectedAmount}đ`).join(', ');
+    return { assistantMessage: `[MOCK] Dự báo doanh thu (dựa trên ${result.historyDaysUsed} ngày gần nhất): ${lines}.` };
   }
 
   const result = await getSalesSummary({ tenantId: input.tenantId });
