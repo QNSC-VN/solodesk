@@ -12,6 +12,7 @@ function toDto(o: Order): OrderResponseDto {
     status: o.status,
     customerName: o.customerName,
     totalAmount: o.totalAmount,
+    createdAt: o.createdAt.toISOString(),
     lines: o.lines.map((l) => ({
       id: l.id,
       skuId: l.skuId,

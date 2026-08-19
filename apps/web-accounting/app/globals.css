@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/* Design tokens — /design-system/solodesk/MASTER.md (colors/typography,
+   unchanged from web-buyer-portal) + /design-system/solodesk/pages/
+   web-accounting.md (the data-dense-dashboard structural overrides: this
+   is a professional accountant/support-staff tool, not the household-owner
+   surface — see that file's "Audience" section before changing layout). */
+:root {
+  --color-primary: #15803d;
+  --color-on-primary: #ffffff;
+  --color-secondary: #22c55e;
+  --color-accent: #a16207;
+  --color-on-accent: #ffffff;
+  --color-background: #f0fdf4;
+  --color-foreground: #14532d;
+  --color-card: #ffffff;
+  --color-card-foreground: #14532d;
+  --color-muted: #e8f0f1;
+  --color-muted-foreground: #475569;
+  --color-border: #bbf7d0;
+  --color-destructive: #dc2626;
+  --color-on-destructive: #ffffff;
+  --color-ring: #15803d;
+
+  --badge-success-bg: #dcfce7;
+  --badge-success-fg: #15803d;
+  --badge-pending-bg: #fef3c7;
+  --badge-pending-fg: #a16207;
+  --badge-neutral-bg: #e8f0f1;
+  --badge-neutral-fg: #475569;
+  --badge-error-bg: #fee2e2;
+  --badge-error-fg: #dc2626;
+
+  /* data-dense-dashboard structural values (Light Mode: supported) */
+  --sidebar-width: 240px;
+  --header-height: 56px;
+  --table-row-height: 36px;
+  --grid-gap: 8px;
+  --card-padding: 12px;
+  --font-size-small: 12px;
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-on-primary: var(--color-on-primary);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-on-accent: var(--color-on-accent);
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-foreground);
+  --color-card: var(--color-card);
+  --color-card-foreground: var(--color-card-foreground);
+  --color-muted: var(--color-muted);
+  --color-muted-foreground: var(--color-muted-foreground);
+  --color-border: var(--color-border);
+  --color-destructive: var(--color-destructive);
+  --color-ring: var(--color-ring);
+  --font-heading: var(--font-lexend);
+  --font-body: var(--font-source-sans);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-muted) 25%, var(--color-border) 50%, var(--color-muted) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.badge-success {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-fg);
+}
+.badge-pending {
+  background: var(--badge-pending-bg);
+  color: var(--badge-pending-fg);
+}
+.badge-neutral {
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-fg);
+}
+.badge-error {
+  background: var(--badge-error-bg);
+  color: var(--badge-error-fg);
+}

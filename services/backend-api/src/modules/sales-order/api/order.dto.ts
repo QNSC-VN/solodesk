@@ -39,5 +39,6 @@ export class OrderResponseDto {
   @ApiProperty() status!: string;
   @ApiProperty({ nullable: true }) customerName!: string | null;
   @ApiProperty() totalAmount!: string;
+  @ApiProperty() createdAt!: string;
   @ApiProperty({ type: [OrderLineResponseDto] }) lines!: OrderLineResponseDto[];
 }
