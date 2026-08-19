@@ -59,6 +59,15 @@ export const envSchema = z
     // INTERNAL_SERVICE_TOKEN exactly.
     ML_ANALYTICS_BASE_URL: z.string().default('http://localhost:3003'),
     INTERNAL_SERVICE_TOKEN: z.string().min(32, "INTERNAL_SERVICE_TOKEN must match ml-analytics's value exactly — see its config.py"),
+
+    // Onboarding copilot (docs Section 5.4) — WRITE-capable tools, used
+    // ONLY in mode='onboarding' conversations (never the default assistant
+    // mode). set-business-profile/add-first-product call backend-api;
+    // connect-sepay calls connector-hub's vault. Same INTERNAL_SERVICE_TOKEN
+    // as above, now a 3rd/4th consumer of the same shared secret — MUST
+    // match backend-api's and connector-hub's values exactly.
+    BACKEND_API_BASE_URL: z.string().default('http://localhost:3000/v1'),
+    CONNECTOR_HUB_BASE_URL: z.string().default('http://localhost:3001/v1'),
   })
   .refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
     message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production.',

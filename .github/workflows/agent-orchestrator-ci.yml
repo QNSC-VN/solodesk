@@ -53,6 +53,16 @@ jobs:
       # which inserts precomputed vectors directly, bypassing Voyage).
       VOYAGE_API_KEY: "voyage-ci-only-placeholder-never-real"
       VOYAGE_API_BASE_URL: https://api.voyageai.com/v1
+      # Missing from this file since the ml-analytics turn that introduced
+      # ML_ANALYTICS_BASE_URL/INTERNAL_SERVICE_TOKEN — never caught because
+      # this service's e2e suite never boots the full Nest app (validateEnv
+      # is a main.ts-only path), so a missing CI var here fails silently.
+      # Added retroactively, same "no CI-visible signal from missing tests"
+      # class of gap the audit pass earlier this session already found once.
+      ML_ANALYTICS_BASE_URL: http://localhost:3003
+      INTERNAL_SERVICE_TOKEN: "ci-only-internal-service-token-32-bytes-min"
+      BACKEND_API_BASE_URL: http://localhost:3000/v1
+      CONNECTOR_HUB_BASE_URL: http://localhost:3001/v1
       VOYAGE_EMBEDDING_MODEL: voyage-3.5
     services:
       postgres:

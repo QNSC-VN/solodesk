@@ -17,14 +17,14 @@ function workflowId(tenantId: string, conversationId: string): string {
  */
 @Injectable()
 export class ConversationService {
-  async startConversation(tenantId: string): Promise<{ conversationId: string }> {
+  async startConversation(tenantId: string, mode: 'assistant' | 'onboarding' = 'assistant'): Promise<{ conversationId: string }> {
     const client = await getTemporalClient();
     const conversationId = uuidv7();
 
     await client.start(agentConversationWorkflow, {
       workflowId: workflowId(tenantId, conversationId),
       taskQueue: process.env.TEMPORAL_TASK_QUEUE ?? 'agent-tasks',
-      args: [tenantId],
+      args: [tenantId, mode],
     });
 
     return { conversationId };

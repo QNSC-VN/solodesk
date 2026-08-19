@@ -35,13 +35,19 @@ const IDLE_TIMEOUT = '24 hours';
  * termination policy, not left unbounded. A more sophisticated policy
  * (explicit "end conversation" signal, per-tenant idle budget) is real
  * but separately-scoped future work.
+ *
+ * `mode` (default `'assistant'`) selects which tool registry/system
+ * prompt `runAgentTurn` uses — `'onboarding'` (docs Section 5.4's
+ * onboarding copilot) is the one case with WRITE-capable tools, fixed for
+ * the whole lifetime of a conversation (set once at start, never changed
+ * mid-conversation) so a workflow's write-capability can't shift under it.
  */
-export async function agentConversationWorkflow(tenantId: string): Promise<void> {
+export async function agentConversationWorkflow(tenantId: string, mode: 'assistant' | 'onboarding' = 'assistant'): Promise<void> {
   const history: ConversationMessage[] = [];
   let messageReceived = false;
 
   setHandler(sendMessageUpdate, async (userMessage: string): Promise<string> => {
-    const { assistantMessage } = await runAgentTurn({ tenantId, history, userMessage });
+    const { assistantMessage } = await runAgentTurn({ tenantId, history, userMessage, mode });
     history.push({ role: 'user', content: userMessage });
     history.push({ role: 'assistant', content: assistantMessage });
     messageReceived = true;

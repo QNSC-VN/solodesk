@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../../platform/current-tenant.decorator';
 import { ConversationService } from '../application/conversation.service';
-import { SendMessageDto, ConversationStartedResponseDto, SendMessageResponseDto, ConversationMessageResponseDto } from './conversation.dto';
+import { StartConversationDto, SendMessageDto, ConversationStartedResponseDto, SendMessageResponseDto, ConversationMessageResponseDto } from './conversation.dto';
 
 @ApiTags('conversations')
 @Controller('conversations')
@@ -10,9 +10,9 @@ export class ConversationController {
   constructor(private readonly conversationService: ConversationService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Start a new agent conversation — one Temporal workflow per conversation' })
-  async start(@CurrentTenant() tenantId: string): Promise<ConversationStartedResponseDto> {
-    return this.conversationService.startConversation(tenantId);
+  @ApiOperation({ summary: "Start a new agent conversation — one Temporal workflow per conversation. mode='onboarding' gets WRITE-capable setup tools (docs Section 5.4); default 'assistant' stays read-only." })
+  async start(@CurrentTenant() tenantId: string, @Body() dto: StartConversationDto): Promise<ConversationStartedResponseDto> {
+    return this.conversationService.startConversation(tenantId, dto.mode ?? 'assistant');
   }
 
   @Post(':conversationId/messages')
