@@ -4,6 +4,7 @@ import { db, type Db } from '../../../../db/client';
 import { lots } from '../../../../db/schema/lots';
 import { stockMovements, type StockMovementType } from '../../../../db/schema/stock-movements';
 import { withTenantTransaction, withTenantTransactionOrReuse } from '../../../../platform/tenant-context';
+import { subtractMoney } from '../../../../platform/money';
 import type { ILotRepository } from '../../domain/ports/lot.repository';
 import type { Lot, ReceiveLotInput, AvailableQuantity } from '../../domain/inventory.types';
 
@@ -65,7 +66,7 @@ export class LotDrizzleRepository implements ILotRepository {
         skuId,
         totalOnHand,
         totalReserved,
-        totalAvailable: String(Number(totalOnHand) - Number(totalReserved)),
+        totalAvailable: subtractMoney(totalOnHand, totalReserved, 3),
       };
     });
   }

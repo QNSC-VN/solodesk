@@ -1,23 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db, type Db } from '../../../../db/client';
 import { purchaseNotes } from '../../../../db/schema/purchase-notes';
 import { purchaseNoteLines } from '../../../../db/schema/purchase-note-lines';
 import { suppliers } from '../../../../db/schema/suppliers';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { sumMoney } from '../../../../platform/money';
 import type { IPurchaseNoteRepository, ResolvedPurchaseNoteLine } from '../../domain/ports/purchase-note.repository';
 import type { PurchaseNote, CreatePurchaseNoteInput } from '../../domain/procurement.types';
 
-async function loadNote(tx: Db, id: string, tenantId: string): Promise<PurchaseNote | null> {
-  const noteRows = await tx.select().from(purchaseNotes).where(and(eq(purchaseNotes.id, id), eq(purchaseNotes.tenantId, tenantId))).limit(1);
-  const note = noteRows[0];
-  if (!note) return null;
-
-  const lineRows = await tx
-    .select()
-    .from(purchaseNoteLines)
-    .where(and(eq(purchaseNoteLines.purchaseNoteId, id), eq(purchaseNoteLines.tenantId, tenantId)));
-
+function toNote(note: typeof purchaseNotes.$inferSelect, lineRows: (typeof purchaseNoteLines.$inferSelect)[]): PurchaseNote {
   return {
     id: note.id,
     tenantId: note.tenantId,
@@ -29,6 +21,19 @@ async function loadNote(tx: Db, id: string, tenantId: string): Promise<PurchaseN
   };
 }
 
+async function loadNote(tx: Db, id: string, tenantId: string): Promise<PurchaseNote | null> {
+  const noteRows = await tx.select().from(purchaseNotes).where(and(eq(purchaseNotes.id, id), eq(purchaseNotes.tenantId, tenantId))).limit(1);
+  const note = noteRows[0];
+  if (!note) return null;
+
+  const lineRows = await tx
+    .select()
+    .from(purchaseNoteLines)
+    .where(and(eq(purchaseNoteLines.purchaseNoteId, id), eq(purchaseNoteLines.tenantId, tenantId)));
+
+  return toNote(note, lineRows);
+}
+
 @Injectable()
 export class PurchaseNoteDrizzleRepository implements IPurchaseNoteRepository {
   async findById(id: string, tenantId: string): Promise<PurchaseNote | null> {
@@ -38,12 +43,22 @@ export class PurchaseNoteDrizzleRepository implements IPurchaseNoteRepository {
   async listByTenant(tenantId: string): Promise<PurchaseNote[]> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const noteRows = await tx.select().from(purchaseNotes).where(eq(purchaseNotes.tenantId, tenantId));
-      const results: PurchaseNote[] = [];
-      for (const n of noteRows) {
-        const full = await loadNote(tx, n.id, tenantId);
-        if (full) results.push(full);
+      if (noteRows.length === 0) return [];
+
+      // Batched, not one loadNote() call per row — see order.drizzle-repository.ts's
+      // listByTenant for the same fix and why (1 + 2N queries collapsed to 2).
+      const noteIds = noteRows.map((n) => n.id);
+      const lineRows = await tx
+        .select()
+        .from(purchaseNoteLines)
+        .where(and(inArray(purchaseNoteLines.purchaseNoteId, noteIds), eq(purchaseNoteLines.tenantId, tenantId)));
+      const linesByNoteId = new Map<string, (typeof purchaseNoteLines.$inferSelect)[]>();
+      for (const l of lineRows) {
+        const existing = linesByNoteId.get(l.purchaseNoteId);
+        if (existing) existing.push(l);
+        else linesByNoteId.set(l.purchaseNoteId, [l]);
       }
-      return results;
+      return noteRows.map((n) => toNote(n, linesByNoteId.get(n.id) ?? []));
     });
   }
 
@@ -53,7 +68,7 @@ export class PurchaseNoteDrizzleRepository implements IPurchaseNoteRepository {
     lines: ResolvedPurchaseNoteLine[],
     tx: Db,
   ): Promise<PurchaseNote> {
-    const totalAmount = lines.reduce((sum, l) => sum + Number(l.lineTotal), 0).toFixed(2);
+    const totalAmount = sumMoney(lines.map((l) => l.lineTotal));
 
     const noteRows = await tx.insert(purchaseNotes).values({ tenantId, supplierId: input.supplierId, totalAmount }).returning();
     const note = noteRows[0]!;

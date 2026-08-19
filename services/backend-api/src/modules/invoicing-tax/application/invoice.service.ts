@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
 import { assertTenantMatchesSession } from '../../../platform/tenant-context';
+import { addMoney, compareMoney } from '../../../platform/money';
 import { INVOICE_REPOSITORY, type IInvoiceRepository } from '../domain/ports/invoice.repository';
 import { TaxCalculationService } from './tax-calculation.service';
 import { OrderService } from '../../sales-order/application/order.service';
@@ -44,8 +45,8 @@ export class InvoiceService {
 
     const yearStart = new Date(Date.UTC(asOf.getUTCFullYear(), 0, 1));
     const cumulativeBefore = await this.invoiceRepository.sumIssuedSubtotalSince(tenantId, yearStart);
-    const projectedCumulative = Number(cumulativeBefore) + Number(order.totalAmount);
-    const requiresEInvoice = projectedCumulative >= Number(taxRule.annualRevenueThreshold);
+    const projectedCumulative = addMoney(cumulativeBefore, order.totalAmount);
+    const requiresEInvoice = compareMoney(projectedCumulative, taxRule.annualRevenueThreshold) >= 0;
 
     return this.invoiceRepository.create(tenantId, {
       orderId,

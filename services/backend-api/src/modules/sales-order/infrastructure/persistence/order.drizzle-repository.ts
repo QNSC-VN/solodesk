@@ -1,18 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db, type Db } from '../../../../db/client';
 import { orders } from '../../../../db/schema/orders';
 import { orderLines } from '../../../../db/schema/order-lines';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { sumMoney } from '../../../../platform/money';
 import type { IOrderRepository, ResolvedOrderLine } from '../../domain/ports/order.repository';
 import type { Order, CreateOrderInput } from '../../domain/order.types';
 
-async function loadOrder(tx: Db, id: string, tenantId: string): Promise<Order | null> {
-  const orderRows = await tx.select().from(orders).where(and(eq(orders.id, id), eq(orders.tenantId, tenantId))).limit(1);
-  const order = orderRows[0];
-  if (!order) return null;
-
-  const lineRows = await tx.select().from(orderLines).where(and(eq(orderLines.orderId, id), eq(orderLines.tenantId, tenantId)));
+function toOrder(order: typeof orders.$inferSelect, lineRows: (typeof orderLines.$inferSelect)[]): Order {
   return {
     id: order.id,
     tenantId: order.tenantId,
@@ -32,6 +28,15 @@ async function loadOrder(tx: Db, id: string, tenantId: string): Promise<Order | 
   };
 }
 
+async function loadOrder(tx: Db, id: string, tenantId: string): Promise<Order | null> {
+  const orderRows = await tx.select().from(orders).where(and(eq(orders.id, id), eq(orders.tenantId, tenantId))).limit(1);
+  const order = orderRows[0];
+  if (!order) return null;
+
+  const lineRows = await tx.select().from(orderLines).where(and(eq(orderLines.orderId, id), eq(orderLines.tenantId, tenantId)));
+  return toOrder(order, lineRows);
+}
+
 @Injectable()
 export class OrderDrizzleRepository implements IOrderRepository {
   async findById(id: string, tenantId: string): Promise<Order | null> {
@@ -41,12 +46,20 @@ export class OrderDrizzleRepository implements IOrderRepository {
   async listByTenant(tenantId: string): Promise<Order[]> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const orderRows = await tx.select().from(orders).where(eq(orders.tenantId, tenantId));
-      const results: Order[] = [];
-      for (const o of orderRows) {
-        const full = await loadOrder(tx, o.id, tenantId);
-        if (full) results.push(full);
+      if (orderRows.length === 0) return [];
+
+      // Batched, not one loadOrder() call per row — that re-fetched the
+      // header row it already had plus one lines query each, 1 + 2N queries
+      // for N orders instead of 2 total.
+      const orderIds = orderRows.map((o) => o.id);
+      const lineRows = await tx.select().from(orderLines).where(and(inArray(orderLines.orderId, orderIds), eq(orderLines.tenantId, tenantId)));
+      const linesByOrderId = new Map<string, (typeof orderLines.$inferSelect)[]>();
+      for (const l of lineRows) {
+        const existing = linesByOrderId.get(l.orderId);
+        if (existing) existing.push(l);
+        else linesByOrderId.set(l.orderId, [l]);
       }
-      return results;
+      return orderRows.map((o) => toOrder(o, linesByOrderId.get(o.id) ?? []));
     });
   }
 
@@ -56,7 +69,7 @@ export class OrderDrizzleRepository implements IOrderRepository {
     lines: ResolvedOrderLine[],
     tx: Db,
   ): Promise<Order> {
-    const totalAmount = lines.reduce((sum, l) => sum + Number(l.lineTotal), 0).toFixed(2);
+    const totalAmount = sumMoney(lines.map((l) => l.lineTotal));
 
     const orderRows = await tx
       .insert(orders)

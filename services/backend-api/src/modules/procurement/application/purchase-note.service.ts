@@ -3,6 +3,7 @@ import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
 import { db } from '../../../db/client';
 import { assertTenantMatchesSession, withTenantTransaction } from '../../../platform/tenant-context';
 import { withIdempotency } from '../../../platform/idempotency';
+import { multiplyMoney } from '../../../platform/money';
 import { PURCHASE_NOTE_REPOSITORY, type IPurchaseNoteRepository, type ResolvedPurchaseNoteLine } from '../domain/ports/purchase-note.repository';
 import { NEGOTIATED_PRICE_REPOSITORY, type INegotiatedPriceRepository } from '../domain/ports/negotiated-price.repository';
 import { SupplierService } from './supplier.service';
@@ -58,7 +59,7 @@ export class PurchaseNoteService {
           }
 
           const lot = await this.lotRepository.receive(tenantId, { skuId: line.skuId, lotCode: line.lotCode, quantity: line.quantity, sourceChannel: 'purchase_note' }, undefined, tx);
-          const lineTotal = (Number(unitCost) * Number(line.quantity)).toFixed(2);
+          const lineTotal = multiplyMoney(unitCost, line.quantity);
           resolvedLines.push({ skuId: line.skuId, lotId: lot.id, quantity: line.quantity, unitCost, lineTotal });
         }
 

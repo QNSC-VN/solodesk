@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { NotFoundException } from '@qnsc-vn/platform-http';
 import { TAX_RULE_REPOSITORY, type ITaxRuleRepository } from '../domain/ports/tax-rule.repository';
+import { multiplyMoney, addMoney } from '../../../platform/money';
 import type { TenantIndustry } from '../../identity-tenant/domain/tenant.types';
 import type { TaxCalculationResult } from '../domain/invoice.types';
 
@@ -21,8 +22,8 @@ export class TaxCalculationService {
       throw new NotFoundException('TAX_RULE_NOT_FOUND', `No active tax rule for industry "${industry}" as of ${asOf.toISOString().slice(0, 10)}.`);
     }
 
-    const taxAmount = (Number(subtotal) * Number(taxRule.rate)).toFixed(2);
-    const totalAmount = (Number(subtotal) + Number(taxAmount)).toFixed(2);
+    const taxAmount = multiplyMoney(subtotal, taxRule.rate);
+    const totalAmount = addMoney(subtotal, taxAmount);
 
     return { taxRule, taxAmount, totalAmount };
   }

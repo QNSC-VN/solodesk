@@ -3,6 +3,7 @@ import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
 import { db } from '../../../db/client';
 import { assertTenantMatchesSession, withTenantTransaction } from '../../../platform/tenant-context';
 import { withIdempotency } from '../../../platform/idempotency';
+import { multiplyMoney } from '../../../platform/money';
 import { ORDER_REPOSITORY, type IOrderRepository, type ResolvedOrderLine } from '../domain/ports/order.repository';
 import { LOT_REPOSITORY } from '../../catalog-inventory/domain/ports/lot.repository';
 import type { ILotRepository } from '../../catalog-inventory/domain/ports/lot.repository';
@@ -60,7 +61,7 @@ export class OrderService {
             throw new ConflictException('INSUFFICIENT_STOCK', `Lot ${lotId} does not have ${line.quantity} available.`);
           }
 
-          const lineTotal = (Number(unitPrice) * Number(line.quantity)).toFixed(2);
+          const lineTotal = multiplyMoney(unitPrice, line.quantity);
           resolvedLines.push({ skuId: line.skuId, lotId, quantity: line.quantity, unitPrice, lineTotal });
         }
 

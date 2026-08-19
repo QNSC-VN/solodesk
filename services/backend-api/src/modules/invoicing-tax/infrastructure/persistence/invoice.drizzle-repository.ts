@@ -24,7 +24,7 @@ function toDomain(row: typeof invoices.$inferSelect): Invoice {
   };
 }
 
-async function nextInvoiceNumber(tx: Db, tenantId: string): Promise<string> {
+async function nextInvoiceNumber(tx: Db, tenantId: string, issuedAt: Date): Promise<string> {
   const rows = await tx
     .insert(invoiceSequences)
     .values({ tenantId, nextNumber: 2 })
@@ -34,7 +34,7 @@ async function nextInvoiceNumber(tx: Db, tenantId: string): Promise<string> {
     })
     .returning();
   const assigned = rows[0]!.nextNumber - 1;
-  return `INV-${new Date().getUTCFullYear()}-${String(assigned).padStart(6, '0')}`;
+  return `INV-${issuedAt.getUTCFullYear()}-${String(assigned).padStart(6, '0')}`;
 }
 
 @Injectable()
@@ -87,7 +87,13 @@ export class InvoiceDrizzleRepository implements IInvoiceRepository {
 
   async create(tenantId: string, input: CreateInvoiceInput): Promise<Invoice> {
     return withTenantTransaction(db, tenantId, async (tx) => {
-      const invoiceNumber = await nextInvoiceNumber(tx, tenantId);
+      // One clock source for both the number's year and issuedAt — relying
+      // on the column's defaultNow() (Postgres clock) for issuedAt while
+      // deriving the year from Node's clock let the two disagree near a
+      // year boundary under any clock skew (same bug family already fixed
+      // in traceability's lot-trace repository).
+      const issuedAt = new Date();
+      const invoiceNumber = await nextInvoiceNumber(tx, tenantId, issuedAt);
       const rows = await tx
         .insert(invoices)
         .values({
@@ -100,6 +106,7 @@ export class InvoiceDrizzleRepository implements IInvoiceRepository {
           taxAmount: input.taxAmount,
           totalAmount: input.totalAmount,
           requiresEInvoice: input.requiresEInvoice,
+          issuedAt,
         })
         .returning();
       return toDomain(rows[0]!);

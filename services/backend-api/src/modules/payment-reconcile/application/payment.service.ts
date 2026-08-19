@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConflictException } from '@qnsc-vn/platform-http';
 import { assertTenantMatchesSession } from '../../../platform/tenant-context';
+import { addMoney, subtractMoney, compareMoney } from '../../../platform/money';
 import { PAYMENT_REPOSITORY, type IPaymentRepository } from '../domain/ports/payment.repository';
 import { InvoiceService } from '../../invoicing-tax/application/invoice.service';
 import type { Payment, CreatePaymentInput, PaymentSummary } from '../domain/payment.types';
@@ -38,11 +39,11 @@ export class PaymentService {
     }
 
     const paidSoFar = await this.paymentRepository.sumByInvoice(input.invoiceId, tenantId);
-    const projected = Number(paidSoFar) + Number(input.amount);
-    if (projected > Number(invoice.totalAmount)) {
+    const projected = addMoney(paidSoFar, input.amount);
+    if (compareMoney(projected, invoice.totalAmount) > 0) {
       throw new ConflictException(
         'OVERPAYMENT',
-        `Payment of ${input.amount} would bring invoice ${input.invoiceId} to ${projected.toFixed(2)}, exceeding its total ${invoice.totalAmount}.`,
+        `Payment of ${input.amount} would bring invoice ${input.invoiceId} to ${projected}, exceeding its total ${invoice.totalAmount}.`,
       );
     }
 
@@ -73,14 +74,14 @@ export class PaymentService {
     assertTenantMatchesSession(tenantId);
     const invoice = await this.invoiceService.getInvoice(invoiceId, tenantId);
     const paidAmount = await this.paymentRepository.sumByInvoice(invoiceId, tenantId);
-    const outstandingAmount = (Number(invoice.totalAmount) - Number(paidAmount)).toFixed(2);
+    const outstandingAmount = subtractMoney(invoice.totalAmount, paidAmount);
 
     return {
       invoiceId,
       totalAmount: invoice.totalAmount,
       paidAmount,
       outstandingAmount,
-      isFullyPaid: Number(outstandingAmount) <= 0,
+      isFullyPaid: compareMoney(outstandingAmount, '0') <= 0,
     };
   }
 }
