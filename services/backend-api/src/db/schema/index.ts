@@ -6,3 +6,6 @@ export * from './stock-movements';
 export * from './idempotency-keys';
 export * from './orders';
 export * from './order-lines';
+export * from './tax-rules';
+export * from './invoices';
+export * from './invoice-sequences';

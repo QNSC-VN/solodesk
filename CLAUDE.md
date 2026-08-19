@@ -253,6 +253,48 @@ copy them, don't re-derive them for the next module that needs either:
   into the row) rather than joining `catalog.skus` live — the concrete fix
   for Mục 11's "giữ giá đơn treo khi đổi giá sản phẩm."
 
+## `invoicing-tax` — Strategy pattern for tax calc, cumulative e-invoice threshold
+
+Fourth module. Depends on `IdentityTenantModule` (industry) and
+`SalesOrderModule` (order lookup) via their exported services, not their
+repositories — unlike `sales-order`→`catalog-inventory`, invoice issuance
+doesn't need to share a transaction with order placement (the order is
+already committed by the time an invoice is issued), so `InvoiceService`
+just calls `OrderService.getOrder`/`TenantService.getTenant` normally.
+
+- **`tax.tax_rules` is reference data, NOT tenant-scoped — no `tenant_id`
+  column, no RLS.** Same rates apply to every tenant; versioned by
+  `effective_from`/`effective_to` and seeded by migration (`0007_...sql`),
+  never edited in place. `industry IS NULL` is the fallback rule;
+  `TaxRuleDrizzleRepository.findActiveRule` sorts industry-specific matches
+  before the NULL fallback. Rates seeded are illustrative pilot placeholders,
+  NOT verified statutory rates — flagged in the migration's own comment,
+  pending the real Tax Dept. confirmation (docs Section 13).
+- **`TaxCalculationService` (the Strategy engine) deliberately does NOT
+  decide `requiresEInvoice`.** It only resolves the active rule and computes
+  `taxAmount`/`totalAmount` for one subtotal. The e-invoice threshold check
+  is genuinely a different question — cumulative revenue across ALL of a
+  tenant's invoices this calendar year, not a per-invoice amount — so it
+  lives in `InvoiceService.issueInvoice` instead, backed by
+  `InvoiceDrizzleRepository.sumIssuedSubtotalSince`. The tempting-but-wrong
+  shortcut is comparing a single order's subtotal directly against the
+  1-tỷ-VND threshold — almost never true for one invoice, which would
+  silently misreport nearly every tenant as never needing an e-invoice.
+  `test/invoice-tax.e2e-spec.ts`'s last case guards against exactly that:
+  two orders, neither over the threshold alone, the second one's invoice
+  correctly flips `requiresEInvoice` true once their sum crosses it.
+- **Invoice numbering (`tax.invoice_sequences`) reuses the
+  `atomicUpdate`-style single-statement pattern**, not a Postgres `SERIAL`/
+  sequence object: `INSERT ... ON CONFLICT (tenant_id) DO UPDATE SET
+  next_number = next_number + 1 RETURNING ...`, in the SAME transaction as
+  the invoice insert. If the insert fails, the whole transaction (sequence
+  bump included) rolls back — no permanently-skipped invoice number, unlike
+  a real Postgres sequence (which never rolls back its `nextval()`).
+- One invoice per order (`UNIQUE (tenant_id, order_id)`), checked
+  app-side first for a friendly `ConflictException`, same convention as
+  `CatalogService.createSku`'s SKU-code check — the DB constraint is the
+  real backstop, the app check is the fast path.
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**
