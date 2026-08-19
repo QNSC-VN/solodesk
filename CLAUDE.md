@@ -1206,3 +1206,85 @@ types), ESLint clean, Vitest 7/7, and two real manual smoke tests against
 the actual running backend-api — a real published lot (rendered correctly,
 Vietnamese `sourceChannel` label mapped) and a nonexistent lot (correct
 not-found UI, confirmed soft-404 behavior as described above).
+
+## Invoice PDF generation (BullMQ) — two real bugs, one of them severe
+
+Picked as the next module after web-buyer-portal: docs explicitly name
+this ("Background jobs within a Node service | BullMQ (on Valkey/
+ElastiCache) | PDF invoice generation, filing-deadline reminders, QR
+traceability image resizing"), Valkey is already in the stack (the
+auth-token denylist already uses it), and it's fully spec'd — no design/
+UX guessing needed, unlike a 2nd frontend app. `POST /v1/invoices/:id/pdf`
+enqueues; `src/worker-pdf.ts` (separate process, same split as
+agent-orchestrator's Temporal worker/client) processes; `GET
+/v1/invoices/:id/pdf` downloads once generated. `InvoicePdfService.
+renderInvoicePdf` is split from the queue/worker plumbing so it's directly
+testable without a live Worker — same shape as agent-orchestrator's
+`searchByEmbedding`/`searchKnowledgeBase` split. BullMQ, not Temporal: a
+DIFFERENT tool on purpose — Temporal is for agent-orchestrator's durable,
+long-running AI conversations; this is a short-lived, fire-and-retry job
+with no multi-day durability need, and docs' own rationale for BullMQ
+here is exactly "Valkey is already in the stack... works unchanged."
+
+**Tenant-isolation gap caught before shipping**: the job-status endpoint
+(`GET /v1/invoices/:id/pdf/jobs/:jobId`) initially had no ownership check
+at all — any authenticated caller could poll ANY tenant's `jobId` and
+learn its state, since the URL param isn't scoped by tenant the way the
+PDF file path is. Fixed by comparing the job's own stored `tenantId`
+(BullMQ job data, not something an attacker controls) against the
+caller's session tenant before returning state.
+
+**Bug 1 — NestJS DI silently returns `undefined`, first Temporal call to
+mix `tsx` with a real Nest DI container in this repo.** `worker-pdf.ts`
+originally ran via `tsx watch` (matching agent-orchestrator's worker
+script's tool choice) but crashed on the first real job:
+`this.invoiceService.getInvoice is not a function`. Root cause: `tsx`
+(esbuild) doesn't reliably emit TypeScript's `emitDecoratorMetadata`
+output, which Nest's constructor-based DI depends on for any class with
+no explicit `@Inject()` token — every such dependency came back
+`undefined`, with NO error at boot, only surfacing when a real job ran.
+agent-orchestrator's own `tsx`-run worker never hit this because it
+deliberately never boots a Nest DI container at all (plain functions,
+explicit `tenantId` arguments) — this is genuinely the first script in
+this repo combining `tsx` with `NestFactory`. Fixed by switching to
+`ts-node` (real `tsc`, correct metadata emission): `node --watch -r
+ts-node/register/transpile-only src/worker-pdf.ts` for dev,
+`node dist/worker-pdf.js` (via `nest build`, confirmed it actually emits
+`dist/worker-pdf.js` alongside `dist/main.js`) for production. Found by
+running a real job through a real worker process, not by reading the code
+— the e2e tests didn't catch this because they construct
+`InvoicePdfService` directly with manually-wired dependencies, bypassing
+Nest's DI (and `tsx`'s metadata gap) entirely, same style as
+`invoice-tax.e2e-spec.ts`.
+
+**Bug 2 — pdfkit's built-in fonts have ZERO Vietnamese glyph coverage,
+and the obvious npm fix doesn't work either.** This is a 100%-Vietnamese
+document; the first generated PDF, downloaded and actually read (not
+assumed correct), rendered as "HÓA  N" / "S Ñ hóa  ¡n" — every diacritic
+and đ/Đ silently dropped, garbling the entire invoice. pdfkit's standard-
+14 fonts (Helvetica etc.) are WinAnsi-encoded, no Vietnamese coverage at
+all. First fix attempt — `@fontsource/noto-sans`'s "vietnamese" subset
+WOFF2 — rendered WORSE: verified directly that this file contains ONLY
+Vietnamese-specific glyphs (đ/ơ/ư and precomposed diacritic vowels), NO
+base Latin a-z at all, by design (Google Fonts ships per-script subsets
+meant to be layered together via multiple `@font-face` `unicode-range`
+rules in a browser, not used standalone). pdfkit needs ONE file with
+every glyph the document uses. Real fix: vendored Google Fonts' actual
+complete Noto Sans variable font (`assets/fonts/NotoSans-VF.ttf`, ~2MB,
+full Unicode coverage in one file, fetched once from
+`github.com/google/fonts` and committed, not fetched at runtime) and
+registered it in pdfkit via `doc.registerFont()`. Verified by rendering
+"Xin chào, đây là hóa đơn ưu đãi! HÓA ĐƠN" in isolation and reading the
+resulting PDF back before trusting the real invoice template, then
+re-verified the real invoice end-to-end the same way.
+
+Verified: typecheck clean, e2e suite 53/53 (4 new: real pdfkit rendering
+produces a valid non-trivial PDF, cross-tenant rendering is rejected,
+generated-file read/write round-trips on a real temp filesystem, and
+BullMQ enqueue carries the right job data and rejects an unowned
+invoice), `nest build` produces `dist/worker-pdf.js`. Real manual
+end-to-end smoke test, twice (once exposing each bug, once confirming
+the fix): a real invoice, a real HTTP enqueue call, a real separate
+worker process picking up the job from real Valkey, a real rendered PDF
+written to a real local disk path, downloaded over real HTTP, and
+visually read back to confirm every Vietnamese character is correct.

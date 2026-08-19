@@ -12,7 +12,15 @@ GitHub repo, multiple independently-deployable services.
   `docs/ARCHITECTURE.md` Section 17.2): `identity-tenant`,
   `catalog-inventory`, `sales-order`, `invoicing-tax`, `payment-reconcile`,
   `booking-resource`, `procurement`, `traceability` — the full module list
-  named in Section 8.
+  named in Section 8. Background jobs (docs' named use case — "PDF invoice
+  generation... Valkey is already in the stack... BullMQ works unchanged")
+  are real too: `POST /v1/invoices/:id/pdf` enqueues a real BullMQ job,
+  processed by a separate worker process (`pnpm worker:pdf`, same
+  "separate process from the HTTP app" split as agent-orchestrator's
+  Temporal worker) that renders a real Vietnamese invoice PDF via pdfkit
+  and a vendored Unicode font (`assets/fonts/NotoSans-VF.ttf` — pdfkit's
+  built-in fonts have zero Vietnamese glyph coverage, found by actually
+  reading a generated PDF, not assumed).
 - `services/connector-hub` — NestJS + Fastify + Drizzle, a SEPARATE
   deployable (own Postgres role `solodesk_connector`, GRANTed only on its
   own `vault`/`sync` schemas — see `CLAUDE.md`'s connector-hub section for
@@ -117,6 +125,7 @@ python3 db/migrate.py   # AFTER backend-api's — GRANTs on sales.orders
 uvicorn app.main:app --host 0.0.0.0 --port 3003   # separate terminal
 cd ../..
 pnpm --filter @solodesk/backend-api dev          # :3000
+pnpm --filter @solodesk/backend-api worker:pdf   # separate terminal — invoice PDF generation
 pnpm --filter @solodesk/connector-hub dev        # :3001
 temporal server start-dev                        # separate terminal — :7233 gRPC, :8233 Web UI
 pnpm --filter @solodesk/agent-orchestrator worker  # separate terminal — the Activity executor

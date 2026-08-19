@@ -7,3 +7,7 @@ dist/
 .DS_Store
 coverage/
 .vscode/
+
+# backend-api's generated invoice PDFs (local-disk first cut — see
+# GENERATED_FILES_DIR in services/backend-api/CLAUDE.md's PDF section)
+generated/

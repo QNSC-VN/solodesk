@@ -34,6 +34,13 @@ export const envSchema = z.object({
   // scheme is future work once more than one such route family exists
   // (see CLAUDE.md's connector-hub -> payment-reconcile section).
   INTERNAL_SERVICE_TOKEN: z.string().min(32, 'INTERNAL_SERVICE_TOKEN must be a real random secret, same value configured in connector-hub — checked via constant-time compare in InternalServiceGuard'),
+
+  // Background jobs (BullMQ on the same Valkey as REDIS_URL) — invoice PDF
+  // generation, src/worker-pdf.ts. Local filesystem for this first cut;
+  // docs' eventual Cloudflare R2 object storage plan isn't built yet, same
+  // "documented scope cut" as every other explicit first-cut simplification
+  // in this repo.
+  GENERATED_FILES_DIR: z.string().default('./generated'),
 }).refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
   message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production — same guard rally uses for its dev-login path (see rally CLAUDE.md "Environment flags that look wrong and are not").',
   path: ['DEV_JWT_PRIVATE_KEY'],
