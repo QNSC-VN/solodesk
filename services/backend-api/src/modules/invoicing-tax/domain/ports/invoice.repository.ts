@@ -1,3 +1,4 @@
+import type { Db } from '../../../../db/client';
 import type { Invoice } from '../invoice.types';
 
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
@@ -20,6 +21,6 @@ export interface IInvoiceRepository {
   listByTenant(tenantId: string): Promise<Invoice[]>;
   /** Sum of `subtotal` for all `issued` invoices with `issuedAt >= since` — the cumulative-annual-revenue input to the e-invoice threshold check. */
   sumIssuedSubtotalSince(tenantId: string, since: Date): Promise<string>;
-  /** Assigns the next per-tenant invoice number and inserts, atomically, in one transaction — see `invoice-sequences.ts`. */
-  create(tenantId: string, input: CreateInvoiceInput): Promise<Invoice>;
+  /** Assigns the next per-tenant invoice number and inserts — `tx` MUST be the same transaction as the caller's `withIdempotency` key-insert (see `InvoiceService.issueInvoice`). */
+  create(tenantId: string, input: CreateInvoiceInput, tx: Db): Promise<Invoice>;
 }

@@ -1288,3 +1288,54 @@ the fix): a real invoice, a real HTTP enqueue call, a real separate
 worker process picking up the job from real Valkey, a real rendered PDF
 written to a real local disk path, downloaded over real HTTP, and
 visually read back to confirm every Vietnamese character is correct.
+
+## Idempotent invoice issuance — closing a real pre-pilot gap, and a bug found while closing it
+
+Picked after the user asked directly whether the backend flow was MVP-
+demo-done — checked docs Section 11's own pre-pilot risk list against the
+actual code (not memory) and found `issueInvoice` was the one item with
+no idempotency key at all: a dropped connection mid-issuance and a client
+retry got `409 INVOICE_ALREADY_ISSUED`, not the actual invoice —
+functionally different from `placeOrder`'s real `withIdempotency` handling
+of the exact same class of failure. Fixed to the identical shape:
+`issueInvoice(tenantId, orderId, idempotencyKey)`, the whole body (order
+lookup, tax calc, cumulative-threshold check, and the invoice insert)
+inside one `withTenantTransaction` + `withIdempotency`, same as
+`OrderService.placeOrder`. `InvoiceDrizzleRepository.create` lost its own
+internal `withTenantTransaction` and now takes `tx` as a mandatory
+trailing param (same convention as `OrderDrizzleRepository.create`) — it
+had exactly one caller, safe to change. `POST /v1/invoices` now requires
+an `Idempotency-Key` header, same shape as `POST /v1/orders`.
+
+**A second, more interesting bug found while wiring the retry test**:
+`withIdempotency`'s cached-replay path returns `responseBody` straight
+from a `jsonb` column — any `Date` field on the ORIGINAL result (e.g.
+`Invoice.issuedAt`) round-trips through JSON as a plain ISO string, so a
+cache-hit replay silently returned a string where callers expect a real
+`Date`. This isn't invoice-specific — it's a `withIdempotency`-wide gap
+that also affects `placeOrder`'s cached `Order.createdAt`, just never
+exercised by a test before. Concretely, it would have broken
+`invoice-pdf.service.ts`'s `issuedAt.toLocaleDateString()` the moment a
+real client actually retried invoice issuance with the same key — found
+by writing the retry test, not by reading the code. Fixed generically in
+`src/platform/idempotency.ts` (`reviveDates()`, an ISO-8601-string-shaped
+regex walk over the cached value before returning it) rather than
+invoice-specifically, since every idempotent operation in this codebase
+shares the same cache mechanism and would hit the same bug.
+
+Verified: typecheck clean, e2e 54/54 (new: a genuine-second-request-with-
+different-key case still correctly rejects with `409`, same as before;
+a same-key retry returns the identical invoice — same `id`/
+`invoiceNumber`/`issuedAt` — confirmed as a real `Date` instance, not a
+string, and confirmed exactly one row exists in `tax.invoices` for that
+order afterward, not two). Real manual HTTP smoke test against the live
+dev server: issued a real invoice, retried with the same
+`Idempotency-Key` and got byte-identical JSON back (not a 409), then
+confirmed a genuinely different key on the same already-issued order
+still correctly returns `409 INVOICE_ALREADY_ISSUED`.
+
+Remaining items from docs Section 11's pre-pilot list, still open (not
+touched by this fix): undo + audit log, real login/session-recovery (no
+AuthService wired, dev-token-minting only), returns/exchanges linked to
+an order, and confirming cash-specific reconciliation is modeled
+distinctly from the general payment-recording path.

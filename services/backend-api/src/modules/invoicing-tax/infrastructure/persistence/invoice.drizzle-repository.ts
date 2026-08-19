@@ -85,31 +85,37 @@ export class InvoiceDrizzleRepository implements IInvoiceRepository {
     });
   }
 
-  async create(tenantId: string, input: CreateInvoiceInput): Promise<Invoice> {
-    return withTenantTransaction(db, tenantId, async (tx) => {
-      // One clock source for both the number's year and issuedAt — relying
-      // on the column's defaultNow() (Postgres clock) for issuedAt while
-      // deriving the year from Node's clock let the two disagree near a
-      // year boundary under any clock skew (same bug family already fixed
-      // in traceability's lot-trace repository).
-      const issuedAt = new Date();
-      const invoiceNumber = await nextInvoiceNumber(tx, tenantId, issuedAt);
-      const rows = await tx
-        .insert(invoices)
-        .values({
-          tenantId,
-          orderId: input.orderId,
-          invoiceNumber,
-          taxRuleId: input.taxRuleId,
-          subtotal: input.subtotal,
-          taxRate: input.taxRate,
-          taxAmount: input.taxAmount,
-          totalAmount: input.totalAmount,
-          requiresEInvoice: input.requiresEInvoice,
-          issuedAt,
-        })
-        .returning();
-      return toDomain(rows[0]!);
-    });
+  /**
+   * Takes `tx` explicitly, mandatory — no internal `withTenantTransaction`
+   * of its own. `InvoiceService.issueInvoice` must run this in the SAME
+   * transaction as its `withIdempotency` key-insert (Mục 5.2): the key and
+   * the invoice commit or roll back together, or a failed attempt could
+   * "burn" the key and permanently block a legitimate retry. Same
+   * mandatory-trailing-tx convention as `OrderDrizzleRepository.create`.
+   */
+  async create(tenantId: string, input: CreateInvoiceInput, tx: Db): Promise<Invoice> {
+    // One clock source for both the number's year and issuedAt — relying
+    // on the column's defaultNow() (Postgres clock) for issuedAt while
+    // deriving the year from Node's clock let the two disagree near a
+    // year boundary under any clock skew (same bug family already fixed
+    // in traceability's lot-trace repository).
+    const issuedAt = new Date();
+    const invoiceNumber = await nextInvoiceNumber(tx, tenantId, issuedAt);
+    const rows = await tx
+      .insert(invoices)
+      .values({
+        tenantId,
+        orderId: input.orderId,
+        invoiceNumber,
+        taxRuleId: input.taxRuleId,
+        subtotal: input.subtotal,
+        taxRate: input.taxRate,
+        taxAmount: input.taxAmount,
+        totalAmount: input.totalAmount,
+        requiresEInvoice: input.requiresEInvoice,
+        issuedAt,
+      })
+      .returning();
+    return toDomain(rows[0]!);
   }
 }

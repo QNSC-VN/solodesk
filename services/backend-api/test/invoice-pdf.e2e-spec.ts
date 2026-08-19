@@ -79,7 +79,7 @@ async function seedTenantWithInvoice(legalName: string) {
       lines: [{ skuId: sku.id, lotId: lot.id, quantity: '2', unitPrice: '120000.00' }],
     }),
   );
-  const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id));
+  const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, `pdf-test-invoice-key-${Date.now()}-${keyCounter}`));
 
   return { tenantId, invoice };
 }

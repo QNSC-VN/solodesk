@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
-import { assertTenantMatchesSession } from '../../../platform/tenant-context';
+import { db } from '../../../db/client';
+import { assertTenantMatchesSession, withTenantTransaction } from '../../../platform/tenant-context';
+import { withIdempotency } from '../../../platform/idempotency';
 import { addMoney, compareMoney } from '../../../platform/money';
 import { INVOICE_REPOSITORY, type IInvoiceRepository } from '../domain/ports/invoice.repository';
 import { TaxCalculationService } from './tax-calculation.service';
@@ -12,10 +14,16 @@ import type { Invoice } from '../domain/invoice.types';
  * `issueInvoice` composes: order lookup (must be `confirmed`) -> tax
  * calculation (Strategy, per tenant industry) -> cumulative-this-year
  * revenue check (the concrete e-invoice threshold, Section 5/20.4) ->
- * atomic invoice-number assignment + insert. One invoice per order — a
- * second attempt for the same order returns a conflict, not a duplicate
- * (`UNIQUE (tenant_id, order_id)` is the DB-level backstop; the check here
- * is the fast, friendly path, same convention as `CatalogService.createSku`).
+ * atomic invoice-number assignment + insert, all inside one
+ * `withTenantTransaction` + `withIdempotency` (Mục 5.2) — same shape as
+ * `OrderService.placeOrder`. A dropped connection mid-issuance and a
+ * client retry with the SAME `Idempotency-Key` now transparently replays
+ * the cached response instead of throwing `INVOICE_ALREADY_ISSUED` — that
+ * conflict check stays as defense-in-depth for a genuinely NEW request
+ * that names an order which already has a (possibly different-key)
+ * invoice, not the idempotent-retry path, which never reaches it (the key
+ * lookup short-circuits first). `UNIQUE (tenant_id, order_id)` is still
+ * the DB-level backstop under both paths.
  */
 @Injectable()
 export class InvoiceService {
@@ -26,37 +34,45 @@ export class InvoiceService {
     private readonly tenantService: TenantService,
   ) {}
 
-  async issueInvoice(tenantId: string, orderId: string): Promise<Invoice> {
+  async issueInvoice(tenantId: string, orderId: string, idempotencyKey: string): Promise<Invoice> {
     assertTenantMatchesSession(tenantId);
 
-    const existing = await this.invoiceRepository.findByOrderId(orderId, tenantId);
-    if (existing) {
-      throw new ConflictException('INVOICE_ALREADY_ISSUED', `Order ${orderId} already has invoice ${existing.invoiceNumber}.`);
-    }
+    return withTenantTransaction(db, tenantId, (tx) =>
+      withIdempotency(tx, tenantId, idempotencyKey, async () => {
+        const existing = await this.invoiceRepository.findByOrderId(orderId, tenantId);
+        if (existing) {
+          throw new ConflictException('INVOICE_ALREADY_ISSUED', `Order ${orderId} already has invoice ${existing.invoiceNumber}.`);
+        }
 
-    const order = await this.orderService.getOrder(orderId, tenantId);
-    if (order.status !== 'confirmed') {
-      throw new ConflictException('ORDER_NOT_CONFIRMED', `Order ${orderId} is ${order.status}, cannot issue an invoice.`);
-    }
+        const order = await this.orderService.getOrder(orderId, tenantId);
+        if (order.status !== 'confirmed') {
+          throw new ConflictException('ORDER_NOT_CONFIRMED', `Order ${orderId} is ${order.status}, cannot issue an invoice.`);
+        }
 
-    const tenant = await this.tenantService.getTenant(tenantId);
-    const asOf = new Date();
-    const { taxRule, taxAmount, totalAmount } = await this.taxCalculationService.calculate(tenant.industry, order.totalAmount, asOf);
+        const tenant = await this.tenantService.getTenant(tenantId);
+        const asOf = new Date();
+        const { taxRule, taxAmount, totalAmount } = await this.taxCalculationService.calculate(tenant.industry, order.totalAmount, asOf);
 
-    const yearStart = new Date(Date.UTC(asOf.getUTCFullYear(), 0, 1));
-    const cumulativeBefore = await this.invoiceRepository.sumIssuedSubtotalSince(tenantId, yearStart);
-    const projectedCumulative = addMoney(cumulativeBefore, order.totalAmount);
-    const requiresEInvoice = compareMoney(projectedCumulative, taxRule.annualRevenueThreshold) >= 0;
+        const yearStart = new Date(Date.UTC(asOf.getUTCFullYear(), 0, 1));
+        const cumulativeBefore = await this.invoiceRepository.sumIssuedSubtotalSince(tenantId, yearStart);
+        const projectedCumulative = addMoney(cumulativeBefore, order.totalAmount);
+        const requiresEInvoice = compareMoney(projectedCumulative, taxRule.annualRevenueThreshold) >= 0;
 
-    return this.invoiceRepository.create(tenantId, {
-      orderId,
-      taxRuleId: taxRule.id,
-      subtotal: order.totalAmount,
-      taxRate: taxRule.rate,
-      taxAmount,
-      totalAmount,
-      requiresEInvoice,
-    });
+        return this.invoiceRepository.create(
+          tenantId,
+          {
+            orderId,
+            taxRuleId: taxRule.id,
+            subtotal: order.totalAmount,
+            taxRate: taxRule.rate,
+            taxAmount,
+            totalAmount,
+            requiresEInvoice,
+          },
+          tx,
+        );
+      }),
+    );
   }
 
   async getInvoice(id: string, tenantId: string): Promise<Invoice> {

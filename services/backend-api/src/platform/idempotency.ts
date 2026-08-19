@@ -2,6 +2,31 @@ import { eq, and } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { idempotencyKeys } from '../db/schema/idempotency-keys';
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * `responseBody` is `jsonb` — round-tripping any domain object through it
+ * turns every `Date` field into a plain ISO string (found while wiring
+ * `InvoiceService.issueInvoice`'s idempotent retry: a cached replay's
+ * `issuedAt` came back a string, not a `Date`, which would have silently
+ * broken `invoice-pdf.service.ts`'s `issuedAt.toLocaleDateString()` the
+ * moment a real client actually retried with the same key). Generic, not
+ * invoice-specific — every idempotent operation's cached replay
+ * (`placeOrder`'s `createdAt` included) gets this same treatment.
+ */
+function reviveDates<T>(value: T): T {
+  if (typeof value === 'string') {
+    return (ISO_DATE_RE.test(value) ? new Date(value) : value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => reviveDates(v)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, reviveDates(v)])) as T;
+  }
+  return value;
+}
+
 /**
  * Mục 5.2 — every side-effecting operation gets an idempotency key, so an
  * agent/client retry (15–30% of the time, per docs Section 5.2) never
@@ -35,7 +60,7 @@ export async function withIdempotency<T>(tx: Db, tenantId: string, key: string, 
     if (!existing[0] || existing[0].responseBody == null) {
       throw new Error(`Idempotency key "${key}" exists with no cached response — invariant violation, investigate.`);
     }
-    return existing[0].responseBody as T;
+    return reviveDates(existing[0].responseBody as T);
   }
 
   const result = await fn();

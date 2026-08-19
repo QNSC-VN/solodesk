@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { getCurrentTenantId } from '../../../platform/tenant-context';
 import { InvoiceService } from '../application/invoice.service';
 import { IssueInvoiceDto, InvoiceResponseDto } from './invoice.dto';
@@ -26,9 +26,13 @@ export class InvoiceController {
   constructor(private readonly invoiceService: InvoiceService) {}
 
   @Post()
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Mục 5.2 / Section 11 — required: a dropped connection + client retry replays the cached invoice instead of double-issuing or erroring' })
   @ApiOperation({ summary: 'Issue an invoice for a confirmed order — tax calculated via the versioned rule engine' })
-  async issue(@Body() dto: IssueInvoiceDto): Promise<InvoiceResponseDto> {
-    const invoice = await this.invoiceService.issueInvoice(getCurrentTenantId(), dto.orderId);
+  async issue(@Body() dto: IssueInvoiceDto, @Headers('idempotency-key') idempotencyKey?: string): Promise<InvoiceResponseDto> {
+    if (!idempotencyKey) {
+      throw new BadRequestException('Idempotency-Key header is required.');
+    }
+    const invoice = await this.invoiceService.issueInvoice(getCurrentTenantId(), dto.orderId, idempotencyKey);
     return toDto(invoice);
   }
 

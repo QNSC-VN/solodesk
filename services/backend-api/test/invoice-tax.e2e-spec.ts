@@ -62,7 +62,7 @@ describe('Invoice tax calculation (Strategy pattern, Section 20.5) — real Post
     const tenantId = await seedTenant('Tax Test Tenant Agriculture', 'agriculture');
     const order = await placeOrderWithSubtotal(tenantId, 'agriculture', '1000000.00');
 
-    const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id));
+    const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, `tax-test-invoice-key-${Date.now()}`));
 
     expect(invoice.taxRate).toBe('0.0150');
     expect(invoice.taxAmount).toBe('15000.00');
@@ -71,20 +71,39 @@ describe('Invoice tax calculation (Strategy pattern, Section 20.5) — real Post
     expect(invoice.invoiceNumber).toMatch(/^INV-\d{4}-\d{6}$/);
   });
 
-  it('rejects a second invoice for the same order', async () => {
+  it('rejects a second invoice for the same order — a genuinely new request (different idempotency key), not a retry', async () => {
     const tenantId = await seedTenant('Tax Test Tenant Duplicate', 'food_beverage');
     const order = await placeOrderWithSubtotal(tenantId, 'food_beverage', '500000.00');
 
-    await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id));
+    await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, `tax-test-invoice-key-a-${Date.now()}`));
 
-    await expect(runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id))).rejects.toThrow();
+    await expect(runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, `tax-test-invoice-key-b-${Date.now()}`))).rejects.toThrow();
+  });
+
+  it('a retry with the SAME idempotency key replays the cached invoice instead of erroring — Section 11\'s "idempotent invoice issuance when connectivity drops mid-transaction"', async () => {
+    const tenantId = await seedTenant('Tax Test Tenant Idempotent Retry', 'food_beverage');
+    const order = await placeOrderWithSubtotal(tenantId, 'food_beverage', '700000.00');
+    const key = `tax-test-invoice-retry-key-${Date.now()}`;
+
+    const first = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, key));
+    const retried = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, key));
+
+    expect(retried.id).toBe(first.id);
+    expect(retried.invoiceNumber).toBe(first.invoiceNumber);
+    expect(retried.issuedAt).toBeInstanceOf(Date);
+    expect(retried.issuedAt.getTime()).toBe(first.issuedAt.getTime());
+
+    // Confirms the retry didn't ALSO insert a second row under the hood —
+    // the real regression this fix closes, not just "no error thrown".
+    const all = await invoiceRepo.listByTenant(tenantId);
+    expect(all.filter((i) => i.orderId === order.id)).toHaveLength(1);
   });
 
   it('a single order at/above the annual threshold requires an e-invoice', async () => {
     const tenantId = await seedTenant('Tax Test Tenant Big Order', 'tourism');
     const order = await placeOrderWithSubtotal(tenantId, 'tourism', '1000000000.00'); // exactly the 1 tỷ threshold
 
-    const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id));
+    const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, `tax-test-invoice-key-${Date.now()}`));
 
     expect(invoice.requiresEInvoice).toBe(true);
   });
@@ -93,11 +112,11 @@ describe('Invoice tax calculation (Strategy pattern, Section 20.5) — real Post
     const tenantId = await seedTenant('Tax Test Tenant Cumulative', 'food_beverage');
 
     const orderA = await placeOrderWithSubtotal(tenantId, 'food_beverage', '600000000.00');
-    const invoiceA = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, orderA.id));
+    const invoiceA = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, orderA.id, `tax-test-invoice-key-a-${Date.now()}`));
     expect(invoiceA.requiresEInvoice).toBe(false); // 600M < 1B
 
     const orderB = await placeOrderWithSubtotal(tenantId, 'food_beverage', '500000000.00');
-    const invoiceB = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, orderB.id));
+    const invoiceB = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, orderB.id, `tax-test-invoice-key-b-${Date.now()}`));
     expect(invoiceB.requiresEInvoice).toBe(true); // 600M + 500M = 1.1B >= 1B
   });
 });

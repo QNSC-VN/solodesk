@@ -56,7 +56,7 @@ async function seedInvoice(legalName: string, subtotal: string) {
   const order = await runWithTenant(tenantId, () =>
     orderService.placeOrder(tenantId, `fwd-test-key-${Date.now()}-${counter}`, { channel: 'counter', lines: [{ skuId: sku.id, lotId: lot.id, quantity: '1', unitPrice: subtotal }] }),
   );
-  const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id));
+  const invoice = await runWithTenant(tenantId, () => invoiceService.issueInvoice(tenantId, order.id, `fwd-test-invoice-key-${Date.now()}-${counter}`));
   return { tenantId, invoice };
 }
 
