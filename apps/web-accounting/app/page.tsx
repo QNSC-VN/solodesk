@@ -16,6 +16,18 @@ const ORDER_COLUMNS: DataTableColumn<Order>[] = [
   { key: "customerName", header: "Khách hàng", render: (o) => o.customerName ?? "—" },
   { key: "status", header: "Trạng thái", render: (o) => <StatusPill status={o.status} /> },
   { key: "totalAmount", header: "Tổng tiền", render: (o) => formatVnd(o.totalAmount), align: "right" },
+  {
+    key: "actions",
+    header: "Hành động",
+    render: (o) =>
+      o.status === "confirmed" ? (
+        <a href={`/returns/new?orderId=${o.id}`} className="font-medium text-[var(--color-primary)] hover:underline">
+          Trả hàng
+        </a>
+      ) : (
+        "—"
+      ),
+  },
 ];
 
 /**

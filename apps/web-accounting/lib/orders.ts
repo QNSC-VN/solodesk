@@ -23,3 +23,8 @@ export interface Order {
 export async function getOrders(accessToken: string): Promise<Order[]> {
   return authenticatedJson<Order[]>(accessToken, "/orders");
 }
+
+/** Calls backend-api's real `GET /v1/orders/:id` — used by the new-return page to show order context before submitting. */
+export async function getOrder(accessToken: string, id: string): Promise<Order> {
+  return authenticatedJson<Order>(accessToken, `/orders/${id}`);
+}

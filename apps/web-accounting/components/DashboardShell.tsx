@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: "/", label: "Đơn hàng" },
   { href: "/invoices", label: "Hóa đơn" },
   { href: "/stock", label: "Kho hàng" },
+  { href: "/returns", label: "Trả hàng" },
 ];
 
 export interface DashboardShellProps {

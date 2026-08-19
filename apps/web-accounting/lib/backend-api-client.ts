@@ -8,11 +8,16 @@
  */
 
 export class BackendApiError extends Error {
+  /** The domain error code from backend-api's `{"error":{"code":...}}` envelope, when the body parses as that shape. */
+  public readonly code?: string;
+
   constructor(
     public readonly status: number,
     message: string,
+    code?: string,
   ) {
     super(message);
+    this.code = code;
   }
 }
 
@@ -35,7 +40,13 @@ export async function authenticatedJson<T>(accessToken: string, path: string, in
   const res = await authenticatedFetch(accessToken, path, init);
   if (!res.ok) {
     const body = await res.text();
-    throw new BackendApiError(res.status, `backend-api ${path} returned ${res.status}: ${body}`);
+    let code: string | undefined;
+    try {
+      code = (JSON.parse(body) as { error?: { code?: string } })?.error?.code;
+    } catch {
+      // body wasn't the {"error":{"code":...}} envelope — leave code undefined
+    }
+    throw new BackendApiError(res.status, `backend-api ${path} returned ${res.status}: ${body}`, code);
   }
   return (await res.json()) as T;
 }
