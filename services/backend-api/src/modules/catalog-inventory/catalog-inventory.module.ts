@@ -16,6 +16,9 @@ import { LOT_REPOSITORY } from './domain/ports/lot.repository';
     { provide: SKU_REPOSITORY, useClass: SkuDrizzleRepository },
     { provide: LOT_REPOSITORY, useClass: LotDrizzleRepository },
   ],
-  exports: [CatalogService, InventoryService],
+  // Repository tokens exported too: sales-order needs ILotRepository/ISkuRepository
+  // directly (not through CatalogService/InventoryService) so it can pass its
+  // own transaction through — see OrderService's header comment.
+  exports: [CatalogService, InventoryService, SKU_REPOSITORY, LOT_REPOSITORY],
 })
 export class CatalogInventoryModule {}

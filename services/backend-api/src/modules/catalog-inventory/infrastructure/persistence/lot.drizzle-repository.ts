@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { eq, and, asc, sql, gt, gte, type SQL } from 'drizzle-orm';
-import { db } from '../../../../db/client';
+import { db, type Db } from '../../../../db/client';
 import { lots } from '../../../../db/schema/lots';
 import { stockMovements, type StockMovementType } from '../../../../db/schema/stock-movements';
-import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { withTenantTransaction, withTenantTransactionOrReuse } from '../../../../platform/tenant-context';
 import type { ILotRepository } from '../../domain/ports/lot.repository';
 import type { Lot, ReceiveLotInput, AvailableQuantity } from '../../domain/inventory.types';
 
@@ -95,7 +95,7 @@ export class LotDrizzleRepository implements ILotRepository {
     });
   }
 
-  async reserve(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null> {
+  async reserve(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null> {
     // Postgres NUMERIC is exact decimal — no epsilon needed, unlike a float comparison.
     return this.atomicUpdate(
       lotId,
@@ -105,10 +105,11 @@ export class LotDrizzleRepository implements ILotRepository {
       'reservation',
       qty,
       referenceId,
+      tx,
     );
   }
 
-  async release(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null> {
+  async release(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null> {
     return this.atomicUpdate(
       lotId,
       tenantId,
@@ -117,10 +118,11 @@ export class LotDrizzleRepository implements ILotRepository {
       'release',
       qty,
       referenceId,
+      tx,
     );
   }
 
-  async consumeReserved(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null> {
+  async consumeReserved(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null> {
     return this.atomicUpdate(
       lotId,
       tenantId,
@@ -132,10 +134,11 @@ export class LotDrizzleRepository implements ILotRepository {
       'consumption',
       qty,
       referenceId,
+      tx,
     );
   }
 
-  async consumeDirect(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null> {
+  async consumeDirect(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null> {
     return this.atomicUpdate(
       lotId,
       tenantId,
@@ -144,6 +147,7 @@ export class LotDrizzleRepository implements ILotRepository {
       'consumption',
       qty,
       referenceId,
+      tx,
     );
   }
 
@@ -165,8 +169,9 @@ export class LotDrizzleRepository implements ILotRepository {
     movementType: StockMovementType,
     qty: string,
     referenceId?: string,
+    outerTx?: Db,
   ): Promise<Lot | null> {
-    return withTenantTransaction(db, tenantId, async (tx) => {
+    return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
       const rows = await tx
         .update(lots)
         .set({ ...patch, updatedAt: new Date() })

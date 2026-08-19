@@ -53,6 +53,32 @@ export async function withTenantTransaction<TSchema extends Record<string, unkno
 }
 
 /**
+ * Same as `withTenantTransaction`, but reuses an already-open `tx` if the
+ * caller provides one — the composability primitive that lets an
+ * application-service span writes across multiple repositories in ONE
+ * transaction (e.g. `sales-order` placing an order and consuming stock
+ * together, so a stock-consume failure can never leave an order recorded
+ * with nothing deducted). Convention: every repository method that mutates
+ * data takes an optional `tx` last parameter and calls this instead of
+ * `withTenantTransaction` directly — same shape as rally's `Tx`-generic
+ * repository ports (see docs Section 17.2).
+ *
+ * Deliberately does NOT re-run `SET LOCAL` when reusing a provided `tx` —
+ * it's already set by whichever call opened that transaction, and Postgres
+ * would reject a second `SET LOCAL` mid-transaction for the same setting
+ * anyway only if scoped oddly; simpler to just not repeat it.
+ */
+export async function withTenantTransactionOrReuse<TSchema extends Record<string, unknown>, T>(
+  db: PostgresJsDatabase<TSchema>,
+  tenantId: string,
+  tx: PostgresJsDatabase<TSchema> | undefined,
+  fn: (tx: PostgresJsDatabase<TSchema>) => Promise<T>,
+): Promise<T> {
+  if (tx) return fn(tx);
+  return withTenantTransaction(db, tenantId, fn);
+}
+
+/**
  * Section 4.4 defense-in-depth: call at every tool/repository-method entrypoint
  * that receives an explicit tenantId argument from an external caller (e.g. an
  * MCP tool invocation). Rejects BEFORE touching the database if it doesn't

@@ -218,6 +218,41 @@ for any future module mutating a quantity/balance/counter under concurrency
   real need for it shows up (YAGNI) — the caller can drive `consumeDirect`
   per lot itself meanwhile.
 
+## `sales-order` — cross-aggregate transactions and idempotency, made real
+
+Third module. Two platform primitives it introduced, both cross-cutting —
+copy them, don't re-derive them for the next module that needs either:
+
+- **`withTenantTransactionOrReuse` (`tenant-context.ts`) + an optional
+  trailing `tx` on every mutating repository method** is how an
+  application-service spans writes across two aggregates in ONE transaction.
+  `OrderService.placeOrder` is the concrete case: it opens one
+  `withTenantTransaction`, then calls `lotRepository.consumeDirect(..., tx)`
+  and `orderRepository.create(..., tx)` with that SAME `tx` — so a failed
+  stock-consume rolls back the order insert too, and vice versa. Before this,
+  `ILotRepository`'s methods only ever opened their own transaction, which
+  would have made this exact atomicity impossible without a bigger rewrite.
+  `OrderService` injects `LOT_REPOSITORY`/`SKU_REPOSITORY` directly (not
+  through `InventoryService`/`CatalogService`) — repository-to-repository
+  composition at the application layer is the accepted shape for a
+  cross-aggregate transaction script; going through another module's
+  application service would mean that service also needing a `tx`-aware
+  public API it doesn't otherwise need.
+- **`withIdempotency` (`platform/idempotency.ts`)** is Mục 5.2 made real: an
+  `INSERT ... ON CONFLICT DO NOTHING` on `platform.idempotency_keys` inside
+  the SAME transaction as the effect it guards. Two truly concurrent
+  requests with the same key: Postgres's unique-index row lock blocks the
+  second insert until the first's transaction resolves, so the second either
+  sees the first's committed cached response or (if the first rolled back)
+  proceeds normally — no explicit retry loop needed. Verified end-to-end by
+  `test/order-idempotency.e2e-spec.ts`: 3 concurrent `placeOrder` calls with
+  one key consume stock once and return the same order; a failed attempt
+  (insufficient stock) rolls back far enough that the SAME key can retry and
+  succeed later — the key is never "burned" by a failed attempt.
+- Order lines snapshot `unitPrice` at order time (`sku.unitPrice`, copied
+  into the row) rather than joining `catalog.skus` live — the concrete fix
+  for Mục 11's "giữ giá đơn treo khi đổi giá sản phẩm."
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**

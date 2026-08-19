@@ -1,3 +1,4 @@
+import type { Db } from '../../../../db/client';
 import type { Lot, ReceiveLotInput, AvailableQuantity } from '../inventory.types';
 
 export const LOT_REPOSITORY = Symbol('LOT_REPOSITORY');
@@ -13,6 +14,11 @@ export const LOT_REPOSITORY = Symbol('LOT_REPOSITORY');
  *
  * A method returns `null` when the guard fails (insufficient available/
  * reserved quantity) — the caller decides whether that's a 409 Conflict.
+ *
+ * The optional trailing `tx` on every mutating method lets an
+ * application-service span this call and another repository's write in ONE
+ * transaction (e.g. `sales-order` — see `tenant-context.ts`'s
+ * `withTenantTransactionOrReuse`). Omit it to run standalone, same as before.
  */
 export interface ILotRepository {
   findById(id: string, tenantId: string): Promise<Lot | null>;
@@ -22,11 +28,11 @@ export interface ILotRepository {
   receive(tenantId: string, input: ReceiveLotInput, createdBy?: string): Promise<Lot>;
 
   /** Holds `qty` against a lot for a pending order without deducting stock yet. */
-  reserve(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  reserve(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;
   /** Releases a hold — order cancelled/expired before consumption. */
-  release(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  release(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;
   /** Confirms a previously reserved amount as actually shipped/sold. */
-  consumeReserved(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  consumeReserved(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;
   /** Immediate sale with no prior reservation (counter sale, single channel). */
-  consumeDirect(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  consumeDirect(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;
 }
