@@ -4,3 +4,5 @@ export * from './skus';
 export * from './lots';
 export * from './invoices';
 export * from './payments';
+export * from './bookings';
+export * from './resources';

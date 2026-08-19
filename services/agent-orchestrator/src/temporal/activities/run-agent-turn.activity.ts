@@ -4,6 +4,7 @@ import { wrapUntrustedContent } from '../../platform/prompt-injection';
 import { getSalesSummary, getSalesSummaryToolSchema, GET_SALES_SUMMARY_TOOL_NAME } from './tools/get-sales-summary.tool';
 import { getStockLevel, getStockLevelToolSchema, GET_STOCK_LEVEL_TOOL_NAME } from './tools/get-stock-level.tool';
 import { getOutstandingInvoices, getOutstandingInvoicesToolSchema, GET_OUTSTANDING_INVOICES_TOOL_NAME } from './tools/get-outstanding-invoices.tool';
+import { getUpcomingBookings, getUpcomingBookingsToolSchema, GET_UPCOMING_BOOKINGS_TOOL_NAME } from './tools/get-upcoming-bookings.tool';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -52,6 +53,10 @@ const TOOLS: Record<string, { schema: Anthropic.Tool; handler: (tenantId: string
   [GET_OUTSTANDING_INVOICES_TOOL_NAME]: {
     schema: getOutstandingInvoicesToolSchema,
     handler: async (tenantId) => getOutstandingInvoices({ tenantId }),
+  },
+  [GET_UPCOMING_BOOKINGS_TOOL_NAME]: {
+    schema: getUpcomingBookingsToolSchema,
+    handler: async (tenantId) => getUpcomingBookings({ tenantId }),
   },
 };
 
@@ -109,6 +114,15 @@ async function runAgentTurnMocked(input: RunAgentTurnInput): Promise<RunAgentTur
     }
     const lines = result.invoices.map((i) => `${i.invoiceNumber} (còn ${i.outstandingAmount}đ)`).join(', ');
     return { assistantMessage: `[MOCK] Có ${result.count} hóa đơn chưa thanh toán đủ: ${lines}.` };
+  }
+
+  if (/(dat ban|dat phong|booking|dat cho|lich dat)/.test(message)) {
+    const result = await getUpcomingBookings({ tenantId: input.tenantId });
+    if (result.count === 0) {
+      return { assistantMessage: '[MOCK] Không có lịch đặt nào sắp tới.' };
+    }
+    const lines = result.bookings.map((b) => `${b.resourceName} lúc ${b.startsAt} (${b.customerName}, ${b.partySize} người)`).join('; ');
+    return { assistantMessage: `[MOCK] Có ${result.count} lịch đặt sắp tới: ${lines}.` };
   }
 
   const result = await getSalesSummary({ tenantId: input.tenantId });

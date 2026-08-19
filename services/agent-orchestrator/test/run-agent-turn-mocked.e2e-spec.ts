@@ -47,6 +47,21 @@ describe('runAgentTurn with MOCK_LLM_RESPONSES=true — real Postgres, mocked LL
     expect(result.assistantMessage).toContain('Không có hóa đơn');
   });
 
+  it('a booking question calls the REAL get_upcoming_bookings tool and embeds its real result', async () => {
+    const tenantId = await seedTenant('Agent Mock Test Tenant Bookings');
+    const [resource] = await adminSql`INSERT INTO booking.resources (tenant_id, name, resource_type, capacity) VALUES (${tenantId}, 'Phong Deluxe', 'room', 1) RETURNING id`;
+    await adminSql`
+      INSERT INTO booking.bookings (tenant_id, resource_id, customer_name, starts_at, ends_at, party_size, status)
+      VALUES (${tenantId}, ${resource!.id}, 'Chi Lan', now() + interval '2 hours', now() + interval '4 hours', 2, 'confirmed')
+    `;
+
+    const result = await runAgentTurn({ tenantId, history: [], userMessage: 'Sap toi co lich dat phong nao khong?' });
+
+    expect(result.assistantMessage).toMatch(/^\[MOCK\]/);
+    expect(result.assistantMessage).toContain('Phong Deluxe');
+    expect(result.assistantMessage).toContain('Chi Lan');
+  });
+
   it('a generic question falls back to the real sales summary', async () => {
     const tenantId = await seedTenant('Agent Mock Test Tenant Sales');
 

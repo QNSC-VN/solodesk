@@ -29,10 +29,11 @@ GitHub repo, multiple independently-deployable services.
   NestJS HTTP client (`pnpm dev`, starts/signals/queries conversations as
   Temporal workflows). Own Postgres role `solodesk_agent`, SELECT-only on
   exactly the tables its tools need (`identity.tenants`/`sales.orders`/
-  `catalog.skus`/`catalog.lots`/`tax.invoices`/`payments.payments`) — a
-  genuinely different security boundary from connector-hub's (READ yes,
-  WRITE no, vs connector-hub's NONE at all). Three real Layer A tools
-  (`get_sales_summary`, `get_stock_level`, `get_outstanding_invoices`),
+  `catalog.skus`/`catalog.lots`/`tax.invoices`/`payments.payments`/
+  `booking.bookings`/`booking.resources`) — a genuinely different security
+  boundary from connector-hub's (READ yes, WRITE no, vs connector-hub's
+  NONE at all). Four real Layer A tools (`get_sales_summary`,
+  `get_stock_level`, `get_outstanding_invoices`, `get_upcoming_bookings`),
   calling the Anthropic SDK directly — no LiteLLM gateway/Langfuse/RAG
   yet, an explicit scope decision, see CLAUDE.md.
 - Postgres RLS + non-superuser app role in ALL THREE services, done FIRST

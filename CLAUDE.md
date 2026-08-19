@@ -819,3 +819,37 @@ code:**
   re-running the exact same script end to end and by a dedicated
   regression test (`test/run-agent-turn-mocked.e2e-spec.ts`) that would
   have caught this before it ever reached a real demo.
+
+---
+
+# Fourth Layer A tool (`get_upcoming_bookings`) — extends coverage to Chân dung 2
+
+`get_upcoming_bookings` (`db/migrations/0004_grant_booking_read.sql` grants
+SELECT on `booking.bookings`/`booking.resources`) is the fourth tool and
+fourth schema grant, following the exact same shape as
+`get_outstanding_invoices`: zero caller-supplied arguments, a single query
+(here an INNER JOIN, not a GROUP BY), capped at 20 results. It extends
+real Layer A coverage from the sales/catalog/tax personas to Chân dung 2
+(tourism/booking) tenants — "what's coming up" for a homestay/restaurant.
+
+- **`held` (unconfirmed) bookings are deliberately excluded**, only
+  `confirmed` ones show — a tentative hold isn't a commitment worth
+  surfacing as "upcoming," the same distinction backend-api's own
+  `booking-resource` module draws between the two statuses.
+- Registered in the same `TOOLS` map and given its own keyword branch in
+  the demo-only `runAgentTurnMocked` (Vietnamese "đặt bàn/đặt phòng/lịch
+  đặt", diacritics-stripped same as the other branches).
+- `test/role-isolation.e2e-spec.ts` updated the same way the catalog/tax
+  grants were: the table just granted moves from the "cannot read" example
+  to the "can read" list, plus its own cannot-insert check; the "cannot
+  read an ungranted table" example moved to `procurement.suppliers` (still
+  correctly denied).
+
+Verified: typecheck clean, e2e tests pass for real Postgres (soonest-first
+ordering, held/past bookings correctly excluded, empty-tenant case, cap
+enforcement with 25 seeded bookings) and for the mocked-LLM path (a real
+booking seeded via the admin connection shows up correctly in the `[MOCK]`
+reply). Live smoke test against a real Temporal dev server + real
+Anthropic endpoint confirms the 4-tool schema list is still well-formed
+(clean 401 auth failure, not a malformed-request error) — same check
+performed after every tool addition so far.
