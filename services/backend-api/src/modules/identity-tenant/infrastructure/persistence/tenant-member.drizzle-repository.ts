@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
-import { db } from '../../../../db/client';
+import { db, type Db } from '../../../../db/client';
 import { tenantMembers } from '../../../../db/schema/tenant-members';
-import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { userTenantMemberships } from '../../../../db/schema/user-tenant-memberships';
+import { withTenantTransaction, withTenantTransactionOrReuse } from '../../../../platform/tenant-context';
 import type { ITenantMemberRepository } from '../../domain/ports/tenant.repository';
 import type { TenantMember } from '../../domain/tenant.types';
 
@@ -44,10 +45,30 @@ export class TenantMemberDrizzleRepository implements ITenantMemberRepository {
     });
   }
 
-  async add(member: Omit<TenantMember, 'id'>): Promise<TenantMember> {
-    return withTenantTransaction(db, member.tenantId, async (tx) => {
-      const rows = await tx.insert(tenantMembers).values(member).returning();
+  async add(member: Omit<TenantMember, 'id'>, tx?: Db): Promise<TenantMember> {
+    return withTenantTransactionOrReuse(db, member.tenantId, tx, async (innerTx) => {
+      const rows = await innerTx.insert(tenantMembers).values(member).returning();
+      // Maintains the non-RLS lookup index alongside the RLS-protected
+      // source of truth, in the same transaction — see
+      // `findTenantIdsForUser`'s doc comment on the port interface.
+      await innerTx
+        .insert(userTenantMemberships)
+        .values({ userId: member.userId, tenantId: member.tenantId })
+        .onConflictDoNothing();
       return toDomain(rows[0]!);
     });
+  }
+
+  /**
+   * Reads the non-RLS `user_tenant_memberships` index directly — no
+   * `withTenantTransaction` here on purpose, since the whole point is
+   * answering this before any tenant context can exist.
+   */
+  async findTenantIdsForUser(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ tenantId: userTenantMemberships.tenantId })
+      .from(userTenantMemberships)
+      .where(eq(userTenantMemberships.userId, userId));
+    return rows.map((r) => r.tenantId);
   }
 }

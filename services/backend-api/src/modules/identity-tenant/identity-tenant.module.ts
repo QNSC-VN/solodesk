@@ -13,6 +13,11 @@ import { TENANT_REPOSITORY, TENANT_MEMBER_REPOSITORY } from './domain/ports/tena
     { provide: TENANT_REPOSITORY, useClass: TenantDrizzleRepository },
     { provide: TENANT_MEMBER_REPOSITORY, useClass: TenantMemberDrizzleRepository },
   ],
-  exports: [TenantService],
+  // TENANT_REPOSITORY/TENANT_MEMBER_REPOSITORY exported for the new auth
+  // module's signup flow, which composes tenant+user+owner-membership in one
+  // transaction — same repository-to-repository composition at the
+  // application layer as OrderService injecting LOT_REPOSITORY/SKU_REPOSITORY
+  // directly (sales-order), not through another module's service.
+  exports: [TenantService, TENANT_REPOSITORY, TENANT_MEMBER_REPOSITORY],
 })
 export class IdentityTenantModule {}

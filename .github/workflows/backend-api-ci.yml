@@ -35,6 +35,11 @@ jobs:
       # cross-service integration test ever runs both in one job.
       INTERNAL_SERVICE_TOKEN: "ci-only-internal-service-token-32-bytes-min"
       GENERATED_FILES_DIR: "./generated"
+      # Real login (src/modules/auth) — GoogleTokenVerifier is never actually
+      # invoked by any e2e test (no live-Google-dependency test, same
+      # precedent as every other 3rd-party credential in this repo), this
+      # just satisfies env.schema.ts's required-field check at boot.
+      GOOGLE_OAUTH_CLIENT_ID: "ci-only-placeholder-google-client-id"
     services:
       postgres:
         image: postgres:18
@@ -76,6 +81,10 @@ jobs:
             const fs = require('fs');
             fs.writeFileSync(process.env.GITHUB_ENV, 'JWT_PUBLIC_KEY<<EOF\n' + publicKey + 'EOF\n', { flag: 'a' });
             fs.writeFileSync(process.env.GITHUB_ENV, 'DEV_JWT_PRIVATE_KEY<<EOF\n' + privateKey + 'EOF\n', { flag: 'a' });
+            // Real login's signing key — same ephemeral keypair, so it
+            // matches JWT_PUBLIC_KEY above (see env.schema.ts's own comment
+            // on why this is a separate var from DEV_JWT_PRIVATE_KEY).
+            fs.writeFileSync(process.env.GITHUB_ENV, 'JWT_PRIVATE_KEY<<EOF\n' + privateKey + 'EOF\n', { flag: 'a' });
           "
 
       - name: Run migrations + app-role safety gate (test DB)

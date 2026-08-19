@@ -5,6 +5,7 @@ import { validateEnv } from './config/env.schema';
 import { TenantContextInterceptor } from './platform/tenant-context.interceptor';
 import { RequestContextMiddleware } from './platform/request-context.middleware';
 import { AuthModule } from './platform/auth/auth.module';
+import { AuthFeatureModule } from './modules/auth/auth.module';
 import { IdentityTenantModule } from './modules/identity-tenant/identity-tenant.module';
 import { CatalogInventoryModule } from './modules/catalog-inventory/catalog-inventory.module';
 import { SalesOrderModule } from './modules/sales-order/sales-order.module';
@@ -18,6 +19,7 @@ import { TraceabilityModule } from './modules/traceability/traceability.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     AuthModule,
+    AuthFeatureModule,
     IdentityTenantModule,
     CatalogInventoryModule,
     SalesOrderModule,

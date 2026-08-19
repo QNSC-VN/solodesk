@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { db } from '../../../../db/client';
+import { db, type Db } from '../../../../db/client';
 import { tenants } from '../../../../db/schema/tenants';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
 import type { ITenantRepository } from '../../domain/ports/tenant.repository';
@@ -31,8 +31,8 @@ export class TenantDrizzleRepository implements ITenantRepository {
     return rows[0] ? toDomain(rows[0]) : null;
   }
 
-  async create(input: CreateTenantInput): Promise<Tenant> {
-    const rows = await db
+  async create(input: CreateTenantInput, tx?: Db): Promise<Tenant> {
+    const rows = await (tx ?? db)
       .insert(tenants)
       .values({
         legalName: input.legalName,

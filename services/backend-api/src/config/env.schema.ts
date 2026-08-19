@@ -22,11 +22,22 @@ export const envSchema = z.object({
   JWT_PUBLIC_KEY: z.string().min(1, 'ES256 PEM public key — verifies access tokens'),
   JWT_ISSUER: z.string().default('solodesk'),
   JWT_AUDIENCE: z.string().default('solodesk-api'),
-  // Dev/test-only: mints tokens locally since no real login/SSO flow exists yet
-  // (Sprint 1+ scope). Must never be set in a real deployed environment — a
-  // service that can both sign and verify its own tokens is not authenticating
-  // anyone, it's trusting itself.
+  // Real login (src/modules/auth) — the ES256 signing key for real
+  // signup/login/refresh session minting, distinct from DEV_JWT_PRIVATE_KEY
+  // below (which stays dev/test-only, untouched — see that var's own comment).
+  JWT_PRIVATE_KEY: z.string().min(1, 'ES256 PEM private key — signs real login/signup access tokens'),
+  // Dev/test-only: mints tokens locally without going through a real signup/
+  // login flow (mint-dev-token.ts), useful for quickly testing OTHER
+  // services against this one. Must never be set in a real deployed
+  // environment — a service that can both sign and verify its own tokens
+  // for this path is not authenticating anyone, it's trusting itself.
   DEV_JWT_PRIVATE_KEY: z.string().optional(),
+  // Real login — Google Sign-In (self-serve signup/login).
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(1, 'Google Cloud Console OAuth client id — expected id_token audience'),
+  // "Let key, I will input later": unset in local dev/test, EmailService
+  // logs the email instead of sending it — see that service's own comment.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM_ADDRESS: z.string().default('no-reply@solodesk.vn'),
 
   // Service-to-service — the ONLY route family this gates is
   // internal/payments (connector-hub forwarding a verified SePay payment

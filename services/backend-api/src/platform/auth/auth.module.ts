@@ -59,6 +59,10 @@ import { GlobalJwtAuthGuard } from './global-jwt-auth.guard';
     // request-context wiring it depends on, in one place.
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
   ],
-  exports: [RequestContextService],
+  // AuthTokenCache exported (in addition to RequestContextService) so the
+  // real-login module's own binding of @qnsc-vn/identity's AuthService can
+  // reuse this SAME instance/Redis connection rather than opening a second
+  // one — @Global() means this propagates everywhere without a re-import.
+  exports: [RequestContextService, AuthTokenCache],
 })
 export class AuthModule {}
