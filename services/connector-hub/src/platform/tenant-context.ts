@@ -33,7 +33,9 @@ export async function withTenantTransaction<TSchema extends Record<string, unkno
   fn: (tx: PostgresJsDatabase<TSchema>) => Promise<T>,
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.tenant_id = ${sql.raw(`'${tenantId}'`)}`);
+    // Parameterized, not string-interpolated raw SQL — `SET LOCAL` doesn't
+    // accept a bind parameter directly, but `set_config` does.
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
     return fn(tx);
   });
 }

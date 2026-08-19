@@ -14,6 +14,7 @@ import { db } from '../src/db/client';
  */
 describe('solodesk_agent role isolation — real Postgres, no mocks', () => {
   it('CAN read every table its tools actually query', async () => {
+    await expect(db.execute(sql`SELECT * FROM identity.tenants LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM sales.orders LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM catalog.skus LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM catalog.lots LIMIT 1`)).resolves.toBeDefined();
