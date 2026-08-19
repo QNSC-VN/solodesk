@@ -2,11 +2,15 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
 import { assertTenantMatchesSession } from '../../../platform/tenant-context';
 import { LOT_REPOSITORY, type ILotRepository } from '../domain/ports/lot.repository';
-import type { Lot, ReceiveLotInput, AvailableQuantity } from '../domain/inventory.types';
+import { SKU_REPOSITORY, type ISkuRepository } from '../domain/ports/sku.repository';
+import type { Lot, ReceiveLotInput, AvailableQuantity, StockSummaryItem } from '../domain/inventory.types';
 
 @Injectable()
 export class InventoryService {
-  constructor(@Inject(LOT_REPOSITORY) private readonly lotRepository: ILotRepository) {}
+  constructor(
+    @Inject(LOT_REPOSITORY) private readonly lotRepository: ILotRepository,
+    @Inject(SKU_REPOSITORY) private readonly skuRepository: ISkuRepository,
+  ) {}
 
   async receiveLot(tenantId: string, input: ReceiveLotInput, createdBy?: string): Promise<Lot> {
     assertTenantMatchesSession(tenantId);
@@ -16,6 +20,37 @@ export class InventoryService {
   async getAvailableQuantity(skuId: string, tenantId: string): Promise<AvailableQuantity> {
     assertTenantMatchesSession(tenantId);
     return this.lotRepository.getAvailableQuantity(skuId, tenantId);
+  }
+
+  /**
+   * SKU catalog + its aggregated stock quantity, one combined view — the
+   * stock page's real data source. A SKU with no lots received yet
+   * (nothing to join against) still appears, zeroed out, rather than
+   * silently missing from the list.
+   */
+  async getStockSummary(tenantId: string): Promise<StockSummaryItem[]> {
+    assertTenantMatchesSession(tenantId);
+    const [skus, quantities] = await Promise.all([
+      this.skuRepository.listByTenant(tenantId),
+      this.lotRepository.listAvailableQuantitiesByTenant(tenantId),
+    ]);
+    const quantityBySkuId = new Map(quantities.map((q) => [q.skuId, q]));
+
+    return skus.map((sku) => {
+      const qty = quantityBySkuId.get(sku.id);
+      return {
+        skuId: sku.id,
+        skuCode: sku.skuCode,
+        name: sku.name,
+        unit: sku.unit,
+        category: sku.category,
+        unitPrice: sku.unitPrice,
+        isActive: sku.isActive,
+        totalOnHand: qty?.totalOnHand ?? '0',
+        totalReserved: qty?.totalReserved ?? '0',
+        totalAvailable: qty?.totalAvailable ?? '0',
+      };
+    });
   }
 
   async reserve(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot> {

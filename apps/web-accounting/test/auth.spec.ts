@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
 import { loginWithPassword, AuthError } from "../lib/auth";
 
@@ -10,6 +10,15 @@ import { loginWithPassword, AuthError } from "../lib/auth";
  * out of `notifications.email_outbox` (no real email inbox exists in this
  * dev environment — same "read the token from the DB/log directly"
  * convention backend-api's own e2e tests + manual smoke tests use).
+ *
+ * ONE real signup shared across every test in this file (`beforeAll`, not
+ * one per `it()`) — found while running this suite: `POST /v1/auth/signup`
+ * is real-rate-limited (10/hour per IP), enforced at the HTTP boundary.
+ * backend-api's own e2e tests never hit this because they construct
+ * `SignupService` directly, bypassing the controller; this app's tests
+ * call the real endpoint over real HTTP, so they're the first test suite
+ * in this repo to actually exercise that limit — a real constraint to
+ * design tests around, not a bug to work around by weakening it.
  */
 
 const baseUrl = process.env.BACKEND_API_BASE_URL ?? "http://localhost:3000/v1";
@@ -46,11 +55,14 @@ async function signupAndVerify(email: string, password: string): Promise<void> {
 }
 
 describe("loginWithPassword — real backend-api, real Postgres", () => {
-  it("returns a real session for a verified account", async () => {
-    const email = uniqueEmail("login-ok");
-    const password = "correct horse battery";
-    await signupAndVerify(email, password);
+  const email = uniqueEmail("login");
+  const password = "correct horse battery";
 
+  beforeAll(async () => {
+    await signupAndVerify(email, password);
+  });
+
+  it("returns a real session for a verified account", async () => {
     const session = await loginWithPassword(email, password);
 
     expect(session.accessToken).toBeTruthy();
@@ -58,10 +70,7 @@ describe("loginWithPassword — real backend-api, real Postgres", () => {
     expect(session.user.email).toBe(email);
   });
 
-  it("rejects a wrong password", async () => {
-    const email = uniqueEmail("login-wrongpw");
-    await signupAndVerify(email, "the real password");
-
+  it("rejects a wrong password on the same real account", async () => {
     await expect(loginWithPassword(email, "totally wrong")).rejects.toThrow(AuthError);
   });
 

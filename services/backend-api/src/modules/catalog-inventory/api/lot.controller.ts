@@ -2,8 +2,8 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/commo
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { getCurrentTenantId } from '../../../platform/tenant-context';
 import { InventoryService } from '../application/inventory.service';
-import { ReceiveLotDto, StockMutationDto, SellFromSkuDto, LotResponseDto, AvailableQuantityResponseDto } from './lot.dto';
-import type { Lot, AvailableQuantity } from '../domain/inventory.types';
+import { ReceiveLotDto, StockMutationDto, SellFromSkuDto, LotResponseDto, AvailableQuantityResponseDto, StockSummaryResponseDto } from './lot.dto';
+import type { Lot, AvailableQuantity, StockSummaryItem } from '../domain/inventory.types';
 
 function toDto(l: Lot): LotResponseDto {
   return {
@@ -18,6 +18,21 @@ function toDto(l: Lot): LotResponseDto {
 
 function toAvailableDto(a: AvailableQuantity): AvailableQuantityResponseDto {
   return { skuId: a.skuId, totalOnHand: a.totalOnHand, totalReserved: a.totalReserved, totalAvailable: a.totalAvailable };
+}
+
+function toStockSummaryDto(s: StockSummaryItem): StockSummaryResponseDto {
+  return {
+    skuId: s.skuId,
+    skuCode: s.skuCode,
+    name: s.name,
+    unit: s.unit,
+    category: s.category,
+    unitPrice: s.unitPrice,
+    isActive: s.isActive,
+    totalOnHand: s.totalOnHand,
+    totalReserved: s.totalReserved,
+    totalAvailable: s.totalAvailable,
+  };
 }
 
 @ApiTags('inventory')
@@ -37,6 +52,13 @@ export class LotController {
   async available(@Param('skuId', ParseUUIDPipe) skuId: string): Promise<AvailableQuantityResponseDto> {
     const qty = await this.inventoryService.getAvailableQuantity(skuId, getCurrentTenantId());
     return toAvailableDto(qty);
+  }
+
+  @Get('stock-summary')
+  @ApiOperation({ summary: "Every SKU in the caller's tenant with its aggregated stock quantity — the stock page's real data source" })
+  async stockSummary(): Promise<StockSummaryResponseDto[]> {
+    const summary = await this.inventoryService.getStockSummary(getCurrentTenantId());
+    return summary.map(toStockSummaryDto);
   }
 
   @Post(':id/reserve')

@@ -6,6 +6,11 @@ const STATUS_VARIANTS: Record<string, Variant> = {
   confirmed: "success",
   pending: "pending",
   cancelled: "error",
+  // invoices
+  issued: "success",
+  // e-invoice requirement (a synthetic status, not a domain enum — see app/invoices/page.tsx)
+  required: "pending",
+  not_required: "neutral",
   // notifications / generic
   read: "neutral",
   unread: "pending",

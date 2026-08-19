@@ -6,8 +6,8 @@ import { NotificationBell } from "./NotificationBell";
 
 const NAV_LINKS = [
   { href: "/", label: "Đơn hàng" },
-  // Invoices/stock pages reuse this exact shell + DataTable later — not
-  // built in this first cut, see design-system/solodesk/pages/web-accounting.md.
+  { href: "/invoices", label: "Hóa đơn" },
+  { href: "/stock", label: "Kho hàng" },
 ];
 
 export interface DashboardShellProps {

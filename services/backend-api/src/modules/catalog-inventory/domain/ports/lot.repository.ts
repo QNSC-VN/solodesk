@@ -25,6 +25,8 @@ export interface ILotRepository {
   /** Lots with available quantity > 0 for one SKU, oldest `receivedAt` first (FIFO consumption order). */
   listAvailableBySku(skuId: string, tenantId: string): Promise<Lot[]>;
   getAvailableQuantity(skuId: string, tenantId: string): Promise<AvailableQuantity>;
+  /** Same aggregation, batched across every SKU in the tenant in one query — for the stock page/summary, not N+1 per-SKU calls. */
+  listAvailableQuantitiesByTenant(tenantId: string): Promise<AvailableQuantity[]>;
   receive(tenantId: string, input: ReceiveLotInput, createdBy?: string, tx?: Db): Promise<Lot>;
 
   /** Holds `qty` against a lot for a pending order without deducting stock yet. */

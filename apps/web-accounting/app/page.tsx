@@ -1,6 +1,6 @@
-import { requireSession } from "@/lib/session";
+import { getDashboardContext } from "@/lib/dashboard-context";
 import { getOrders } from "@/lib/orders";
-import { getNotifications, getUnreadCount } from "@/lib/notifications";
+import { formatVnd, formatDate } from "@/lib/format";
 import { DashboardShell } from "@/components/DashboardShell";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { StatusPill } from "@/components/StatusPill";
@@ -9,14 +9,6 @@ import type { Order } from "@/lib/orders";
 export const metadata = {
   title: "Đơn hàng — SoloDesk Kế toán",
 };
-
-function formatVnd(amount: string): string {
-  return `${Number(amount).toLocaleString("vi-VN")} đ`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("vi-VN");
-}
 
 const ORDER_COLUMNS: DataTableColumn<Order>[] = [
   { key: "createdAt", header: "Ngày", render: (o) => formatDate(o.createdAt) },
@@ -27,18 +19,12 @@ const ORDER_COLUMNS: DataTableColumn<Order>[] = [
 ];
 
 /**
- * Dashboard shell + ONE real data screen (orders) — proves the whole shape
- * (auth, layout, real data, status pills) end to end. Invoices/stock pages
- * reuse this exact DashboardShell/DataTable later — documented scope cut,
- * see design-system/solodesk/pages/web-accounting.md.
+ * The orders list — same `DashboardShell`/`DataTable`/`StatusPill` shape
+ * `app/invoices/page.tsx` and `app/stock/page.tsx` reuse verbatim.
  */
 export default async function DashboardPage() {
-  const session = await requireSession();
-  const [orders, notifications, unreadCount] = await Promise.all([
-    getOrders(session.accessToken),
-    getNotifications(session.accessToken),
-    getUnreadCount(session.accessToken),
-  ]);
+  const { session, notifications, unreadCount } = await getDashboardContext();
+  const orders = await getOrders(session.accessToken);
 
   return (
     <DashboardShell user={session.user} notifications={notifications} unreadCount={unreadCount}>

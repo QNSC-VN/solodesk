@@ -29,6 +29,20 @@ export interface AvailableQuantity {
   totalAvailable: string; // onHand - reserved, across all lots
 }
 
+/** SKU catalog metadata + its aggregated stock quantity — the stock page's one combined view. */
+export interface StockSummaryItem {
+  skuId: string;
+  skuCode: string;
+  name: string;
+  unit: string;
+  category: string | null;
+  unitPrice: string;
+  isActive: boolean;
+  totalOnHand: string;
+  totalReserved: string;
+  totalAvailable: string;
+}
+
 export interface StockMovement {
   id: string;
   tenantId: string;

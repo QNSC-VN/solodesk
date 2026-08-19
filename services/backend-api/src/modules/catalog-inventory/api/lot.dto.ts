@@ -34,3 +34,16 @@ export class AvailableQuantityResponseDto {
   @ApiProperty() totalReserved!: string;
   @ApiProperty() totalAvailable!: string;
 }
+
+export class StockSummaryResponseDto {
+  @ApiProperty() skuId!: string;
+  @ApiProperty() skuCode!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() unit!: string;
+  @ApiProperty({ nullable: true }) category!: string | null;
+  @ApiProperty() unitPrice!: string;
+  @ApiProperty() isActive!: boolean;
+  @ApiProperty() totalOnHand!: string;
+  @ApiProperty() totalReserved!: string;
+  @ApiProperty() totalAvailable!: string;
+}

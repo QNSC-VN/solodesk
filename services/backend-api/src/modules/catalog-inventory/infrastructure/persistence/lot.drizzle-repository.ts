@@ -71,6 +71,34 @@ export class LotDrizzleRepository implements ILotRepository {
     });
   }
 
+  /**
+   * The same aggregation as `getAvailableQuantity`, batched across every
+   * SKU in the tenant in ONE query — the stock page needs quantities for
+   * every SKU at once; N `getAvailableQuantity` calls would be the same
+   * N+1 pattern `OrderDrizzleRepository.listByTenant`'s own header comment
+   * already documents avoiding.
+   */
+  async listAvailableQuantitiesByTenant(tenantId: string): Promise<AvailableQuantity[]> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .select({
+          skuId: lots.skuId,
+          totalOnHand: sql<string>`COALESCE(SUM(${lots.quantityOnHand}), 0)`,
+          totalReserved: sql<string>`COALESCE(SUM(${lots.quantityReserved}), 0)`,
+        })
+        .from(lots)
+        .where(eq(lots.tenantId, tenantId))
+        .groupBy(lots.skuId);
+
+      return rows.map((row) => ({
+        skuId: row.skuId,
+        totalOnHand: row.totalOnHand,
+        totalReserved: row.totalReserved,
+        totalAvailable: subtractMoney(row.totalOnHand, row.totalReserved, 3),
+      }));
+    });
+  }
+
   async receive(tenantId: string, input: ReceiveLotInput, createdBy?: string, outerTx?: Db): Promise<Lot> {
     return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
       const rows = await tx

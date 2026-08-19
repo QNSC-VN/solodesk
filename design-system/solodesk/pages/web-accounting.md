@@ -75,21 +75,30 @@ stays fixed (per Master's own Sticky Navigation guidance — compensate with
   domain statuses (order/invoice/notification state) to the existing
   success/pending/neutral/error variants — never a 5th ad hoc color.
 
-## First-cut page scope (this build)
+## Page scope
 
 1. **`/login`** — email+password form + "Sign in with Google" button. No
    hero, no marketing copy — a single centered card, same restrained shape
    as buyer-portal's result card, just with form fields instead of trace
    data.
-2. **`/` (dashboard shell + orders list)** — `DashboardShell` wrapping a
-   `DataTable` of the tenant's orders (`GET /v1/orders`), proving the whole
-   shape (auth, layout, real data, status pills) end-to-end. Invoices/stock
-   pages reuse the exact same `DataTable`/`DashboardShell` components later
-   — not built in this first cut (documented scope cut, matching this
-   repo's own "narrow but real" discipline elsewhere).
+2. **`/` (orders), `/invoices`, `/stock`** — `DashboardShell` wrapping a
+   `DataTable`, one per real data source (`GET /v1/orders`,
+   `GET /v1/invoices`, `GET /v1/lots/stock-summary` — this last one a
+   small, real, additive backend endpoint added alongside this page,
+   batching SKU catalog + aggregated lot quantities in one query rather
+   than N+1 per-SKU calls). All three share the exact same
+   `DataTable`/`DashboardShell`/`StatusPill` components — one table
+   shape, three data sources, proven identical the first time (orders),
+   just reused since (invoices, stock).
 3. **Notification bell**, wired into the header on every authenticated
-   page — the one piece that must ship now while the design is being done,
-   since it's the direct pairing with the just-built backend feature.
+   page — pairs directly with the notifications backend feature.
+
+Still not built (real cuts, not oversights): interactive client-side table
+sorting (rows render in whatever order the API already returns), a
+tenant switcher (multi-tenant-per-accountant is real but `switchWorkspace`
+itself is still deferred backend-side too — see CLAUDE.md's "Real login"
+section), and a forgot-password page (`POST /v1/auth/forgot-password`
+already exists backend-side, just no frontend for it yet).
 
 ## Auth token handling — this Next.js app is its own thin BFF
 
