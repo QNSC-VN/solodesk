@@ -34,7 +34,7 @@
     "@qnsc-vn/observability": "^0.1.4",
     "@qnsc-vn/platform-cache": "^2.1.0",
     "@solodesk/domain-core": "workspace:*",
-    "drizzle-orm": "^0.36.0",
+    "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
@@ -47,8 +47,8 @@
     "fastify": "^5.0.0",
     "jsonwebtoken": "^9.0.2",
     "@types/jsonwebtoken": "^9.0.7",
-    "drizzle-kit": "^0.28.0",
+    "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.0",
-    "vitest": "^2.1.0"
+    "vitest": "^3.2.6"
   }
 }
