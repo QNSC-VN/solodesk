@@ -1996,8 +1996,66 @@ both a real `type: 'payment'` and a real `type: 'refund'` row in
 `receipt → consumption → return` audit trail in
 `catalog.stock_movements` for the lot.
 
-**Deliberately not built in this pass**: no `web-accounting` UI for
-returns — staff can only reach this via the raw API today, same "backend
-first, prove the shape, wire a frontend once one exists to extend" cut
-this repo has made before. `web-accounting`'s existing `DashboardShell`/
-`DataTable` components are the natural fit for a returns page later.
+## web-accounting — returns UI
+
+Picked immediately after the backend feature, closing the "no frontend
+yet" gap it was shipped with. Reuses the existing `DashboardShell`/
+`DataTable`/`StatusPill` components verbatim — no new design-system
+query needed for the read-only list, since it's the same shape as
+`/invoices`/`/stock`. What IS new: this is the first genuinely
+**interactive, mutating** page in `web-accounting` — every prior page
+(`/`, `/invoices`, `/stock`) is a read-only list. Ran `ui-ux-pro-max`'s
+`--domain ux` search for this specific gap (table row action + irreversible-
+action confirmation + form submit feedback) rather than a full
+`--design-system` re-run, since the visual system itself doesn't change —
+only the interaction pattern is new.
+
+**The create flow starts from an order, not a bare form.** A return is
+reached via a new "Trả hàng" action link in the orders table (visible
+only when `order.status === 'confirmed'`, matching backend's own
+`ORDER_NOT_RETURNABLE` guard — no dead-end submit for an already-
+returned/cancelled order), landing on `/returns/new?orderId=<id>`, which
+fetches that ONE order (`lib/orders.ts` gained `getOrder`) and shows its
+real context (date/customer/total/line count) before the staff member
+commits — never a blind order-id text field. `ReturnForm` (the one new
+Client Component, `useActionState` + a Server Action, same shape as
+`LoginForm`) requires an explicit confirmation checkbox before submit —
+the `ui-ux-pro-max` search's own "confirm before delete/irreversible
+actions" guidance, applied here since a return is genuinely irreversible
+(reverses stock/invoice/payment in one transaction). `refundMethod` is an
+optional select, not required by the form itself — the backend is the
+single source of truth for whether it's actually needed (`REFUND_METHOD_
+REQUIRED`), surfaced as a specific inline error rather than guessed
+client-side.
+
+**`BackendApiError` gained a `code` field**, parsed from backend-api's
+`{"error":{"code":...}}` envelope — the one small, real, additive change
+to shared infra this page needed. Every prior page only ever checked
+`.status`; this is the first Server Action that needs to distinguish
+sibling 409s (`ORDER_NOT_RETURNABLE` vs `NO_INVOICE_TO_RETURN` vs
+`REFUND_METHOD_REQUIRED`) to show the right Vietnamese message, not a
+generic "something went wrong."
+
+**Success feedback via a `?created=1` query param**, not a new flash-
+message/cookie mechanism — the Server Action redirects to `/returns?
+created=1` after a real success, and the list page renders a brief
+`role="status"` banner when present. Matches the `ui-ux-pro-max` guidance
+("confirm successful actions, never silent success") without adding
+new session-state infrastructure for one banner.
+
+Verified: `next build` clean, ESLint clean, `pnpm test` 9/9 (7
+pre-existing + 2 new in `test/returns.spec.ts` — a fresh tenant's empty
+returns list, then a real return created via `createReturn` against a
+real seeded paid invoice; a return omitting `refundMethod` on a paid
+invoice is rejected). Real manual smoke test against the live dev stack,
+using two separately-seeded real sessions (one via `mint-dev-token`, one
+via a full real signup → verify-email → login round-trip, since the
+proxy's session check requires a real `sd_rt` refresh token a dev-minted
+token doesn't have): confirmed the orders page renders the real "Trả
+hàng" link only for the confirmed order; `/returns/new?orderId=...`
+renders the real order's customer name and total; after seeding a real
+return via the API, `/returns` shows it (reason, refund amount, refund
+method pill, "Completed" status, success banner) and the now-`returned`
+order's action link disappears; re-visiting `/returns/new` for that same
+order correctly shows "already returned, cannot return" instead of the
+form.

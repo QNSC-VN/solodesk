@@ -147,8 +147,12 @@ GitHub repo, multiple independently-deployable services.
   token before it expires. The stock page's data source
   (`GET /v1/lots/stock-summary`) is a small, real, additive backend
   endpoint added alongside it (batches SKU + lot-quantity data in one
-  query, not N+1). See CLAUDE.md's "web-accounting" sections for the full
-  design (including the page-level design-system override at
+  query, not N+1). A `/returns` page and a `/returns/new?orderId=` create
+  flow (reached from a "Trả hàng" action link on the orders table) round
+  out backend-api's returns module with a real UI — the first genuinely
+  interactive, mutating page in this app, not just another read-only
+  list. See CLAUDE.md's "web-accounting" sections for the full design
+  (including the page-level design-system override at
   `design-system/solodesk/pages/web-accounting.md`). Table sorting, a
   tenant switcher, and a forgot-password page are still real, deliberate
   cuts — not built yet.
