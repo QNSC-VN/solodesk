@@ -129,7 +129,20 @@ GitHub repo, multiple independently-deployable services.
   `EmptyState`/`SiteHeader`/`SiteFooter` components, meant to be reused by
   the other 2 apps once built.
 
-Not yet built: `apps/mobile`, `apps/web-accounting`, `apps/web-b2g-dashboard`.
+- `apps/web-accounting` — the first AUTHENTICATED frontend (`web-buyer-
+  portal` is deliberately public). For the shared accountant/support staff
+  (docs Section 8), not the household owner — that's the separate Flutter
+  `apps/mobile`. Login (password + Google Sign-In) and a dashboard shell +
+  orders list + notification bell, all real. This app is its own thin BFF:
+  `backend-api` has no CORS configured, so Server Actions/`proxy.ts` (Next
+  16's renamed `middleware.js`) call it server-side and hold the session
+  in `httpOnly` cookies — the browser never sees a token. `proxy.ts` also
+  proactively refreshes the access token before it expires. See CLAUDE.md's
+  "web-accounting" section for the full design (including the page-level
+  design-system override at `design-system/solodesk/pages/web-accounting.md`).
+  Invoices/stock pages reuse the same components later — not built yet.
+
+Not yet built: `apps/mobile`, `apps/web-b2g-dashboard`.
 
 ## Local dev
 
@@ -159,6 +172,8 @@ pnpm --filter @solodesk/agent-orchestrator worker  # separate terminal — the A
 pnpm --filter @solodesk/agent-orchestrator dev     # :3002 — the HTTP client
 cp apps/web-buyer-portal/.env.example apps/web-buyer-portal/.env.local
 pnpm --filter web-buyer-portal dev                 # :3000 default — pass --port to avoid clashing with backend-api
+cp apps/web-accounting/.env.example apps/web-accounting/.env.local  # fill in NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID
+pnpm --filter web-accounting dev                   # :3010 (fixed — see its package.json)
 ```
 
 Run the cross-tenant isolation gate locally before touching anything in

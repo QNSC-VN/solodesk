@@ -1722,3 +1722,114 @@ end-to-end smoke test against the live dev server + a real running
 `sent` (confirmed via direct Postgres query, not assumed from logs alone),
 and all 4 new `/v1/notifications*` endpoints round-tripped against a real
 session (list → unread-count 1 → mark read → unread-count 0).
+
+---
+
+# `apps/web-accounting` — first authenticated frontend
+
+Real login and notifications unblocked this: the first authenticated
+frontend in this repo (`web-buyer-portal` is deliberately public). Picked
+next, confirmed with the user from a short list (returns/exchanges, a
+general business audit log, and `web-b2g-dashboard` were the alternatives).
+
+**Audience correction made before designing anything, not assumed**: this
+app is for the **shared accountant/support staff** (docs Section 8's own
+app description), NOT the household-business owner — that's the separate,
+out-of-scope-here Flutter mobile app (`apps/mobile`, "primary surface for
+household users"). It's a professional dashboard tool for someone managing
+multiple tenants' books; it should look and read like one, not inherit the
+"elderly/non-technical, one big button" language the rest of this product's
+design intentionally uses elsewhere.
+
+**Design, `ui-ux-pro-max` first, per the standing instruction** — same
+"verify fit, override the tool's wrong auto-aggregation" discipline as
+`web-buyer-portal`'s own `MASTER.md` entry: the tool again suggested a
+marketing landing pattern ("Enterprise Gateway" — hero video, mega menu,
+"Contact Sales" CTA) + Dark Mode (OLED) + Fira Code, all wrong for the same
+reasons already documented for buyer-portal. Wrote
+`design-system/solodesk/pages/web-accounting.md` — the page-level override
+`MASTER.md` explicitly anticipated and deferred ("Dashboard/data pages...
+not covered by this first cut"). Kept Master's light Agriculture/Farm Tech
+palette + Lexend/Source Sans 3 typography; adopted the `data-dense-
+dashboard` style's real structural values (`--sidebar-width: 240px`,
+`--header-height: 56px`, `--table-row-height: 36px`, 12-col grid,
+sortable/sticky tables — confirmed `Light Mode: supported`, not forced into
+the tool's dark-mode default).
+
+**A real architecture decision, made while designing, not left implicit**:
+`backend-api` has zero CORS configured (never needed it — `web-buyer-
+portal` only ever fetches server-side). Rather than add CORS just to let
+the browser call `backend-api` directly — which would also mean putting
+`accessToken`/`refreshToken` somewhere client JS can read them, real XSS
+exposure — this app is its own thin BFF: Server Actions call `backend-
+api`'s real `/v1/auth/{login,google,refresh,logout}` and set the tokens as
+`httpOnly` cookies on THIS app's own domain (`sd_at`/`sd_rt`/`sd_csrf`/
+`sd_exp`/`sd_user`, all httpOnly — even the display-only `sd_user` never
+reaches client JS; Server Components read it and pass it down as props).
+Server Components/Actions read the cookie and call `backend-api` server-
+side with a normal `Authorization: Bearer` header. No CORS anywhere.
+
+**A real constraint found while implementing, not assumed in the plan**:
+a Server Component render cannot set cookies at all (confirmed against
+Next 16's own bundled docs — `cookies().set()` only works in a Server
+Function/Route Handler/Proxy response) — so a reactive "401 → refresh →
+retry" helper inside a page's data-fetch couldn't actually persist a
+refreshed token pair; there'd be nowhere to put the `Set-Cookie` header.
+Moved proactive refresh into `proxy.ts` instead (Next 16 renamed
+`middleware.js` to `proxy.js` — confirmed against the bundled docs, not
+assumed from training data, same discipline `web-buyer-portal`'s own
+`AGENTS.md` already flags for this Next version): it runs on every
+navigation, reads `sd_exp`, and if within 1 minute of expiry calls
+`backend-api`'s real `/v1/auth/refresh` and sets fresh cookies on the
+response before continuing — a genuinely correct place for this logic, not
+a workaround. `lib/backend-api-client.ts`'s `authenticatedFetch` stays a
+plain bearer-header fetch as a result, no retry logic needed there.
+
+**Scope, deliberately narrow** (same "narrow but real, prove it end to
+end" discipline as everywhere else this session): `/login` (password +
+Google Sign-In) and `/` (dashboard shell + one real data screen — the
+orders list, since `GET /v1/orders` already existed) + the notification
+bell (pairs directly with the notifications feature just shipped).
+Invoices/stock pages reuse the exact same `DashboardShell`/`DataTable`
+components later — not built now. Interactive client-side table sorting is
+also a documented cut (`DataTable` renders whatever order the caller's
+data already comes back in) — real, but not needed to prove the shape.
+`OrderResponseDto` gained a `createdAt` field (the domain type already had
+it, just never surfaced) — a real UX gap for an orders table with no date
+column, small and additive.
+
+**A real bug found while writing the test suite, not assumed**: a "fresh
+account has zero notifications" test failed — `signupWithPassword`
+(backend-api) already files a real `EMAIL_VERIFY` notification for every
+signup, so a freshly verified account starts at an unread count of 1, not
+0. Fixed the test's own wrong assumption, not the (correct) backend
+behavior.
+
+Google Sign-In uses the real Google Identity Services SDK
+(`accounts.google.com/gsi/client`), verified server-side by `backend-
+api`'s real `GoogleTokenVerifier` — not live-verified end to end in this
+session (`NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID` is a placeholder, same "let
+key, I will input later" pattern as everywhere else; a real Google Cloud
+Console OAuth client with `localhost:3010` as an authorized origin is
+needed to actually click the button).
+
+Verified: `next build` clean (real TypeScript check via Next's pipeline,
+same as `web-buyer-portal`), ESLint clean, `pnpm test` 7/7 (real backend-
+api, real Postgres, no mocks — `loginWithPassword` against a real signed-
+up-and-verified account, wrong password and nonexistent email both
+rejected; `getOrders` against a real seeded order and an empty-tenant
+case; `getNotifications`/`getUnreadCount`/`markRead`/`markAllRead` against
+real rows, including the just-described real signup-notification finding).
+Real manual smoke test against the live dev stack (`backend-api` :3000 +
+`worker-notifications` + this app on :3010) — no headless-browser tool
+available in this session, said so explicitly rather than claiming a full
+UI click-through, but verified everything reachable via real HTTP calls:
+an unauthenticated request to `/` redirects to `/login` (proxy); `/login`
+renders the real form; a session crafted from REAL tokens (obtained via
+backend-api's actual signup → verify-email HTTP flow, same shape the
+Server Action would produce) renders the full dashboard with a real
+seeded order and the real signup notification, correct status pills,
+correct unread count; an expired `sd_exp` cookie triggers the proxy's
+real proactive refresh, confirmed by real NEW `Set-Cookie` headers
+containing a genuinely rotated access/refresh/csrf token pair from a real
+`backend-api` call.
