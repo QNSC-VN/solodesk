@@ -10,7 +10,9 @@ export default defineConfig({
     // First run of TestWorkflowEnvironment downloads an ephemeral test-server
     // binary (cached afterward) — needs real time on a cold cache.
     hookTimeout: 120_000,
+    // Vitest 4 removed `poolOptions` (all previous poolOptions are now
+    // top-level) — `pool: 'threads'` alone already defaults to multiple
+    // concurrent worker threads, same as the old explicit `singleThread: false`.
     pool: 'threads',
-    poolOptions: { threads: { singleThread: false } },
   },
 });
