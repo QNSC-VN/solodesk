@@ -1,4 +1,4 @@
-import type { Tenant, CreateTenantInput, TenantMember } from '../tenant.types';
+import type { Tenant, CreateTenantInput, UpdateTenantProfileInput, TenantMember } from '../tenant.types';
 
 export const TENANT_REPOSITORY = Symbol('TENANT_REPOSITORY');
 
@@ -14,6 +14,7 @@ export interface ITenantRepository {
   findById(id: string): Promise<Tenant | null>;
   create(input: CreateTenantInput): Promise<Tenant>;
   activate(id: string): Promise<Tenant>;
+  updateProfile(id: string, input: UpdateTenantProfileInput): Promise<Tenant>;
 }
 
 export const TENANT_MEMBER_REPOSITORY = Symbol('TENANT_MEMBER_REPOSITORY');

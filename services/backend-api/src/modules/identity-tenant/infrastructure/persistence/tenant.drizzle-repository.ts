@@ -4,7 +4,7 @@ import { db } from '../../../../db/client';
 import { tenants } from '../../../../db/schema/tenants';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
 import type { ITenantRepository } from '../../domain/ports/tenant.repository';
-import type { Tenant, CreateTenantInput } from '../../domain/tenant.types';
+import type { Tenant, CreateTenantInput, UpdateTenantProfileInput } from '../../domain/tenant.types';
 
 function toDomain(row: typeof tenants.$inferSelect): Tenant {
   return {
@@ -47,6 +47,19 @@ export class TenantDrizzleRepository implements ITenantRepository {
     const rows = await db
       .update(tenants)
       .set({ activatedAt: new Date(), updatedAt: new Date() })
+      .where(eq(tenants.id, id))
+      .returning();
+    return toDomain(rows[0]!);
+  }
+
+  async updateProfile(id: string, input: UpdateTenantProfileInput): Promise<Tenant> {
+    const rows = await db
+      .update(tenants)
+      .set({
+        ...(input.legalName !== undefined ? { legalName: input.legalName } : {}),
+        ...(input.industry !== undefined ? { industry: input.industry } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(tenants.id, id))
       .returning();
     return toDomain(rows[0]!);

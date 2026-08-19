@@ -18,6 +18,12 @@ export interface CreateTenantInput {
   province?: string;
 }
 
+/** The AI onboarding copilot's `set_business_profile` tool — refines a placeholder profile from the pre-registration step into the real business details, conversationally. */
+export interface UpdateTenantProfileInput {
+  legalName?: string;
+  industry?: TenantIndustry;
+}
+
 export interface TenantMember {
   id: string;
   tenantId: string;

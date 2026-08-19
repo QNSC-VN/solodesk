@@ -7,7 +7,7 @@ import {
   type ITenantRepository,
   type ITenantMemberRepository,
 } from '../domain/ports/tenant.repository';
-import type { Tenant, CreateTenantInput, TenantMember } from '../domain/tenant.types';
+import type { Tenant, CreateTenantInput, UpdateTenantProfileInput, TenantMember } from '../domain/tenant.types';
 
 @Injectable()
 export class TenantService {
@@ -42,5 +42,19 @@ export class TenantService {
       throw new NotFoundException('TENANT_NOT_FOUND', `Tenant ${id} not found`);
     }
     return tenant;
+  }
+
+  /**
+   * The AI onboarding copilot's `set_business_profile` tool calls this —
+   * refines a placeholder profile from staff-assisted pre-registration into
+   * the real business details, gathered conversationally (Mục IV.6 "cầm tay
+   * chỉ việc"). Called service-to-service (agent-orchestrator has no
+   * per-user JWT for a machine caller), same `internal/*` + `InternalServiceGuard`
+   * shape as `payment-reconcile`'s forwarding endpoint — see
+   * `internal-onboarding.controller.ts`.
+   */
+  async updateProfile(id: string, input: UpdateTenantProfileInput): Promise<Tenant> {
+    await this.getTenant(id); // 404s if missing, same fail-loud shape as everywhere else
+    return this.tenantRepository.updateProfile(id, input);
   }
 }

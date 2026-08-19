@@ -3,13 +3,14 @@ import { CatalogService } from './application/catalog.service';
 import { InventoryService } from './application/inventory.service';
 import { SkuController } from './api/sku.controller';
 import { LotController } from './api/lot.controller';
+import { InternalOnboardingCatalogController } from './api/internal-onboarding.controller';
 import { SkuDrizzleRepository } from './infrastructure/persistence/sku.drizzle-repository';
 import { LotDrizzleRepository } from './infrastructure/persistence/lot.drizzle-repository';
 import { SKU_REPOSITORY } from './domain/ports/sku.repository';
 import { LOT_REPOSITORY } from './domain/ports/lot.repository';
 
 @Module({
-  controllers: [SkuController, LotController],
+  controllers: [SkuController, LotController, InternalOnboardingCatalogController],
   providers: [
     CatalogService,
     InventoryService,
