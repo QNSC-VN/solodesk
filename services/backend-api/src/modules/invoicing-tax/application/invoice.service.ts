@@ -8,6 +8,8 @@ import { INVOICE_REPOSITORY, type IInvoiceRepository } from '../domain/ports/inv
 import { TaxCalculationService } from './tax-calculation.service';
 import { OrderService } from '../../sales-order/application/order.service';
 import { TenantService } from '../../identity-tenant/application/tenant.service';
+import { TENANT_MEMBER_REPOSITORY, type ITenantMemberRepository } from '../../identity-tenant/domain/ports/tenant.repository';
+import { NotificationService } from '../../notifications/application/notification.service';
 import type { Invoice } from '../domain/invoice.types';
 
 /**
@@ -29,9 +31,11 @@ import type { Invoice } from '../domain/invoice.types';
 export class InvoiceService {
   constructor(
     @Inject(INVOICE_REPOSITORY) private readonly invoiceRepository: IInvoiceRepository,
+    @Inject(TENANT_MEMBER_REPOSITORY) private readonly memberRepository: ITenantMemberRepository,
     private readonly taxCalculationService: TaxCalculationService,
     private readonly orderService: OrderService,
     private readonly tenantService: TenantService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async issueInvoice(tenantId: string, orderId: string, idempotencyKey: string): Promise<Invoice> {
@@ -57,8 +61,13 @@ export class InvoiceService {
         const cumulativeBefore = await this.invoiceRepository.sumIssuedSubtotalSince(tenantId, yearStart);
         const projectedCumulative = addMoney(cumulativeBefore, order.totalAmount);
         const requiresEInvoice = compareMoney(projectedCumulative, taxRule.annualRevenueThreshold) >= 0;
+        // The exact one-time crossing, not "requiresEInvoice is true" in
+        // general — every subsequent invoice this year stays true too, but
+        // re-notifying on each one would be spammy. Only the invoice whose
+        // cumulative-before was still under the threshold fires this.
+        const justCrossed = requiresEInvoice && compareMoney(cumulativeBefore, taxRule.annualRevenueThreshold) < 0;
 
-        return this.invoiceRepository.create(
+        const invoice = await this.invoiceRepository.create(
           tenantId,
           {
             orderId,
@@ -71,6 +80,26 @@ export class InvoiceService {
           },
           tx,
         );
+
+        if (justCrossed) {
+          const owners = (await this.memberRepository.listByTenant(tenantId)).filter((m) => m.role === 'owner');
+          for (const owner of owners) {
+            await this.notificationService.notify(
+              tenantId,
+              {
+                userId: owner.userId,
+                type: 'EINVOICE_THRESHOLD_CROSSED',
+                title: 'Cần phát hành hóa đơn điện tử',
+                body: `Doanh thu lũy kế năm nay của ${tenant.legalName} đã vượt ngưỡng yêu cầu hóa đơn điện tử.`,
+                sourceEventId: `einvoice-threshold-${tenantId}-${asOf.getUTCFullYear()}`,
+                email: { templateName: 'EINVOICE_THRESHOLD_CROSSED', vars: { tenantName: tenant.legalName } },
+              },
+              tx,
+            );
+          }
+        }
+
+        return invoice;
       }),
     );
   }

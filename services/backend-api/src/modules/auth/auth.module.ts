@@ -16,8 +16,8 @@ import {
 } from '@qnsc-vn/identity';
 import type { Env } from '../../config/env.schema';
 import { IdentityTenantModule } from '../identity-tenant/identity-tenant.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PasswordService } from '../../platform/auth/password.service';
-import { EmailService } from '../../platform/email.service';
 import { GoogleTokenVerifier, GOOGLE_VERIFIER_OPTIONS, type GoogleVerifierOptions } from '../../platform/auth/google-token-verifier';
 import { UserDrizzleRepository } from './infrastructure/persistence/user.drizzle-repository';
 import { AuthSessionDrizzleRepository } from './infrastructure/persistence/auth-session.drizzle-repository';
@@ -52,6 +52,7 @@ import { ACCESS_TOKEN_TTL } from './auth.constants';
 @Module({
   imports: [
     IdentityTenantModule,
+    NotificationsModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env>) => ({
@@ -69,7 +70,6 @@ import { ACCESS_TOKEN_TTL } from './auth.constants';
   providers: [
     AuthService,
     PasswordService,
-    EmailService,
     SessionMinter,
     SignupService,
     LoginService,

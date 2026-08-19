@@ -34,10 +34,18 @@ export const envSchema = z.object({
   DEV_JWT_PRIVATE_KEY: z.string().optional(),
   // Real login — Google Sign-In (self-serve signup/login).
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1, 'Google Cloud Console OAuth client id — expected id_token audience'),
-  // "Let key, I will input later": unset in local dev/test, EmailService
+  // "Let key, I will input later": unset in local dev/test, EmailDispatcher
   // logs the email instead of sending it — see that service's own comment.
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM_ADDRESS: z.string().default('no-reply@solodesk.vn'),
+  // Notifications (src/modules/notifications) — which IEmailProvider is
+  // active. Resend is the right default for this stage/volume; SES is a
+  // real, swappable second provider (already proven working in rally) for
+  // when cost-per-email or AWS-native infra matters more than setup speed.
+  EMAIL_PROVIDER: z.enum(['resend', 'ses']).default('resend'),
+  AWS_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
 
   // Service-to-service — the ONLY route family this gates is
   // internal/payments (connector-hub forwarding a verified SePay payment
@@ -55,6 +63,9 @@ export const envSchema = z.object({
 }).refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
   message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production — same guard rally uses for its dev-login path (see rally CLAUDE.md "Environment flags that look wrong and are not").',
   path: ['DEV_JWT_PRIVATE_KEY'],
+}).refine((env) => env.EMAIL_PROVIDER !== 'ses' || (env.AWS_REGION && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY), {
+  message: 'AWS_REGION/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are all required when EMAIL_PROVIDER=ses.',
+  path: ['EMAIL_PROVIDER'],
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -23,3 +23,5 @@ export * from './sso-identities';
 export * from './auth-tokens';
 export * from './auth-audit-log';
 export * from './user-tenant-memberships';
+export * from './notifications';
+export * from './email-outbox';

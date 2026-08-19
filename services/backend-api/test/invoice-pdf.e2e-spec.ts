@@ -18,6 +18,7 @@ import { TaxRuleDrizzleRepository } from '../src/modules/invoicing-tax/infrastru
 import { InvoiceDrizzleRepository } from '../src/modules/invoicing-tax/infrastructure/persistence/invoice.drizzle-repository';
 import { TaxCalculationService } from '../src/modules/invoicing-tax/application/tax-calculation.service';
 import { InvoiceService } from '../src/modules/invoicing-tax/application/invoice.service';
+import { NotificationService } from '../src/modules/notifications/application/notification.service';
 import { InvoicePdfService } from '../src/modules/invoicing-tax/application/invoice-pdf.service';
 import { getInvoicePdfQueue } from '../src/platform/queue';
 import type { Env } from '../src/config/env.schema';
@@ -40,7 +41,7 @@ const catalogService = new CatalogService(skuRepo);
 const tenantService = new TenantService(new TenantDrizzleRepository(), new TenantMemberDrizzleRepository());
 const taxCalculationService = new TaxCalculationService(new TaxRuleDrizzleRepository());
 const invoiceRepo = new InvoiceDrizzleRepository();
-const invoiceService = new InvoiceService(invoiceRepo, taxCalculationService, orderService, tenantService);
+const invoiceService = new InvoiceService(invoiceRepo, new TenantMemberDrizzleRepository(), taxCalculationService, orderService, tenantService, new NotificationService());
 
 let tempDir: string;
 let invoicePdfService: InvoicePdfService;

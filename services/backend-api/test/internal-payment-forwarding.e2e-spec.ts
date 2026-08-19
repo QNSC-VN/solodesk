@@ -14,6 +14,7 @@ import { TaxRuleDrizzleRepository } from '../src/modules/invoicing-tax/infrastru
 import { InvoiceDrizzleRepository } from '../src/modules/invoicing-tax/infrastructure/persistence/invoice.drizzle-repository';
 import { TaxCalculationService } from '../src/modules/invoicing-tax/application/tax-calculation.service';
 import { InvoiceService } from '../src/modules/invoicing-tax/application/invoice.service';
+import { NotificationService } from '../src/modules/notifications/application/notification.service';
 import { PaymentDrizzleRepository } from '../src/modules/payment-reconcile/infrastructure/persistence/payment.drizzle-repository';
 import { PaymentService } from '../src/modules/payment-reconcile/application/payment.service';
 
@@ -33,7 +34,7 @@ const orderService = new OrderService(orderRepo, lotRepo, skuRepo);
 const tenantService = new TenantService(new TenantDrizzleRepository(), new TenantMemberDrizzleRepository());
 const taxCalculationService = new TaxCalculationService(new TaxRuleDrizzleRepository());
 const invoiceRepo = new InvoiceDrizzleRepository();
-const invoiceService = new InvoiceService(invoiceRepo, taxCalculationService, orderService, tenantService);
+const invoiceService = new InvoiceService(invoiceRepo, new TenantMemberDrizzleRepository(), taxCalculationService, orderService, tenantService, new NotificationService());
 
 const paymentRepo = new PaymentDrizzleRepository();
 const paymentService = new PaymentService(paymentRepo, invoiceService);

@@ -9,7 +9,7 @@ import { authTokens } from '../../../db/schema/auth-tokens';
 import { users } from '../../../db/schema/users';
 import { PasswordService } from '../../../platform/auth/password.service';
 import { GoogleTokenVerifier } from '../../../platform/auth/google-token-verifier';
-import { EmailService } from '../../../platform/email.service';
+import { NotificationService } from '../../notifications/application/notification.service';
 import { UserDrizzleRepository } from '../infrastructure/persistence/user.drizzle-repository';
 import { SessionMinter } from './session-minter';
 import {
@@ -58,7 +58,7 @@ export class SignupService {
     @Inject(TENANT_MEMBER_REPOSITORY) private readonly memberRepository: ITenantMemberRepository,
     private readonly passwordService: PasswordService,
     private readonly googleVerifier: GoogleTokenVerifier,
-    private readonly emailService: EmailService,
+    private readonly notificationService: NotificationService,
     private readonly sessionMinter: SessionMinter,
   ) {}
 
@@ -102,11 +102,18 @@ export class SignupService {
         expiresAt: new Date(Date.now() + EMAIL_VERIFY_TTL_MS),
       });
 
-      await this.emailService.send({
-        to: input.email,
-        subject: 'Xác thực email SoloDesk',
-        html: `<p>Nhấn vào liên kết sau để xác thực email và bắt đầu sử dụng SoloDesk:</p><p><a href="${verifyEmailUrl(token)}">${verifyEmailUrl(token)}</a></p><p>Liên kết có hiệu lực trong 24 giờ.</p>`,
-      });
+      await this.notificationService.notify(
+        tenant.id,
+        {
+          userId: user!.id,
+          type: 'EMAIL_VERIFY',
+          title: 'Xác thực email của bạn',
+          body: 'Vui lòng xác thực email để bắt đầu sử dụng SoloDesk.',
+          sourceEventId: `email-verify-${user!.id}`,
+          email: { templateName: 'EMAIL_VERIFY', vars: { verifyUrl: verifyEmailUrl(token) } },
+        },
+        tx,
+      );
     });
   }
 
@@ -194,11 +201,20 @@ export class SignupService {
       expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
     });
 
-    await this.emailService.send({
-      to: email,
-      subject: 'Đặt lại mật khẩu SoloDesk',
-      html: `<p>Nhấn vào liên kết sau để đặt lại mật khẩu:</p><p><a href="${resetPasswordUrl(token)}">${resetPasswordUrl(token)}</a></p><p>Liên kết có hiệu lực trong 1 giờ. Nếu bạn không yêu cầu điều này, hãy bỏ qua email này.</p>`,
-    });
+    // No existing tx/tenant context here (unlike signup) — resolve the
+    // user's tenant via the same non-RLS lookup Google-login's returning-user
+    // case already uses, then open a fresh transaction for the notify call.
+    const [tenantId] = await this.memberRepository.findTenantIdsForUser(user.id);
+    if (tenantId) {
+      await this.notificationService.notify(tenantId, {
+        userId: user.id,
+        type: 'PASSWORD_RESET',
+        title: 'Yêu cầu đặt lại mật khẩu',
+        body: 'Có yêu cầu đặt lại mật khẩu cho tài khoản của bạn.',
+        sourceEventId: `password-reset-${token.slice(0, 16)}`,
+        email: { templateName: 'PASSWORD_RESET', vars: { resetUrl: resetPasswordUrl(token) } },
+      });
+    }
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {

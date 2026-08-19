@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { IdentityTenantModule } from '../identity-tenant/identity-tenant.module';
 import { SalesOrderModule } from '../sales-order/sales-order.module';
 import { CatalogInventoryModule } from '../catalog-inventory/catalog-inventory.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { TaxCalculationService } from './application/tax-calculation.service';
 import { InvoiceService } from './application/invoice.service';
 import { InvoicePdfService } from './application/invoice-pdf.service';
@@ -16,7 +17,7 @@ import { INVOICE_REPOSITORY } from './domain/ports/invoice.repository';
   // CatalogInventoryModule needed directly (not re-exported by
   // SalesOrderModule, which only exports OrderService) — InvoicePdfService
   // resolves SKU names for line items via CatalogService.
-  imports: [IdentityTenantModule, SalesOrderModule, CatalogInventoryModule],
+  imports: [IdentityTenantModule, SalesOrderModule, CatalogInventoryModule, NotificationsModule],
   controllers: [InvoiceController, InvoicePdfController],
   providers: [
     TaxCalculationService,

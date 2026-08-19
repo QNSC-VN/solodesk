@@ -3,14 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { CacheService } from '@qnsc-vn/platform-cache';
 import { generateKeyPair, SignJWT } from 'jose';
-import { eq } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../src/db/client';
+import { withTenantTransaction } from '../src/platform/tenant-context';
 import { users } from '../src/db/schema/users';
 import { authTokens } from '../src/db/schema/auth-tokens';
+import { emailOutbox } from '../src/db/schema/email-outbox';
 import type { Env } from '../src/config/env.schema';
 import { PasswordService } from '../src/platform/auth/password.service';
 import { GoogleTokenVerifier } from '../src/platform/auth/google-token-verifier';
-import { EmailService } from '../src/platform/email.service';
 import { UserDrizzleRepository } from '../src/modules/auth/infrastructure/persistence/user.drizzle-repository';
 import { AuthSessionDrizzleRepository } from '../src/modules/auth/infrastructure/persistence/auth-session.drizzle-repository';
 import { TenantClaimsProvider } from '../src/modules/auth/infrastructure/tenant-claims-provider';
@@ -18,6 +19,7 @@ import { AuthAuditService } from '../src/modules/auth/infrastructure/auth-audit.
 import { SessionMinter } from '../src/modules/auth/application/session-minter';
 import { SignupService } from '../src/modules/auth/application/signup.service';
 import { LoginService } from '../src/modules/auth/application/login.service';
+import { NotificationService } from '../src/modules/notifications/application/notification.service';
 import { TenantDrizzleRepository } from '../src/modules/identity-tenant/infrastructure/persistence/tenant.drizzle-repository';
 import { TenantMemberDrizzleRepository } from '../src/modules/identity-tenant/infrastructure/persistence/tenant-member.drizzle-repository';
 
@@ -28,6 +30,13 @@ import { TenantMemberDrizzleRepository } from '../src/modules/identity-tenant/in
  * login uses a locally-generated ES256 keypair + GoogleTokenVerifier's
  * injectable `jwksResolver` override — same testability shape as
  * @qnsc-vn/identity's own EntraTokenVerifier, no real network call.
+ *
+ * Email verification/reset now go through the real NotificationService
+ * (transactional outbox), not a fake EmailService spy — the raw
+ * verify/reset token is known at INSERT time (embedded in
+ * `email_outbox.template_vars`, needed for the relay to render the email
+ * later), so tests read it straight from that row instead of capturing a
+ * send call. No live relay worker needed for these tests.
  */
 
 const config = new ConfigService<Env>(process.env as unknown as Env);
@@ -44,8 +53,9 @@ const sessionRepository = new AuthSessionDrizzleRepository();
 const claimsProvider = new TenantClaimsProvider(memberRepository);
 const auditService = new AuthAuditService();
 const passwordService = new PasswordService();
-const emailService = new EmailService(config);
+const notificationService = new NotificationService();
 const sessionMinter = new SessionMinter(jwt, userRepository, sessionRepository, claimsProvider, auditService);
+const loginService = new LoginService(userRepository, memberRepository, passwordService, sessionMinter, cache);
 
 let googleKeyPair: Awaited<ReturnType<typeof generateKeyPair>> | undefined;
 async function getGoogleVerifier(): Promise<GoogleTokenVerifier> {
@@ -75,39 +85,52 @@ async function makeSignupService(): Promise<SignupService> {
     memberRepository,
     passwordService,
     await getGoogleVerifier(),
-    emailService,
+    notificationService,
     sessionMinter,
   );
 }
-
-const loginService = new LoginService(userRepository, memberRepository, passwordService, sessionMinter, cache);
 
 function uniqueEmail(label: string): string {
   return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
 }
 
-/** signupWithPassword only stores a token HASH — tests capture the raw link EmailService would have sent instead of reading the DB. */
-function extractTokenFromHtml(html: string): string {
-  const match = /token=([A-Za-z0-9_-]+)/.exec(html);
-  if (!match) throw new Error(`No token found in email HTML: ${html}`);
+/**
+ * Reads the most recent queued email for a user+template and extracts the
+ * raw token from its URL. `email_outbox` is RLS-scoped — a plain unscoped
+ * query here would hit a REAL Postgres nuance found by writing this test:
+ * `current_setting('app.tenant_id', true)` returns `''` (not NULL) on a
+ * pooled connection that previously ran a `SET LOCAL`-using transaction,
+ * and `''::uuid` is a hard cast error, not a graceful empty result. Every
+ * production code path already avoids this by always wrapping RLS-table
+ * queries in `withTenantTransaction` first — this helper does the same.
+ */
+async function extractTokenFromOutbox(tenantId: string, userId: string, templateName: 'EMAIL_VERIFY' | 'PASSWORD_RESET'): Promise<string> {
+  const row = await withTenantTransaction(db, tenantId, async (tx) => {
+    const [r] = await tx
+      .select()
+      .from(emailOutbox)
+      .where(and(eq(emailOutbox.userId, userId), eq(emailOutbox.templateName, templateName)))
+      .orderBy(desc(emailOutbox.createdAt))
+      .limit(1);
+    return r;
+  });
+  if (!row) throw new Error(`No ${templateName} email_outbox row found for user ${userId}`);
+  const url = (row.templateVars as { verifyUrl?: string; resetUrl?: string }).verifyUrl ?? (row.templateVars as { resetUrl?: string }).resetUrl;
+  const match = url ? /token=([A-Za-z0-9_-]+)/.exec(url) : null;
+  if (!match) throw new Error(`No token found in email_outbox row for user ${userId}: ${JSON.stringify(row.templateVars)}`);
   return match[1]!;
+}
+
+async function userIdByEmail(email: string): Promise<string> {
+  const [row] = await db.select().from(users).where(eq(users.email, email));
+  if (!row) throw new Error(`No user found for email ${email}`);
+  return row.id;
 }
 
 describe('Real login — signup, email verification, login, Google, password reset', () => {
   it('signup creates tenant + user + owner membership atomically, and blocks login before verification', async () => {
     const email = uniqueEmail('signup');
-    let capturedHtml = '';
-    const spyEmail = { send: async (input: { html: string }) => { capturedHtml = input.html; } } as unknown as EmailService;
-    const signupService = new SignupService(
-      userRepository,
-      sessionRepository,
-      tenantRepository,
-      memberRepository,
-      passwordService,
-      await getGoogleVerifier(),
-      spyEmail,
-      sessionMinter,
-    );
+    const signupService = await makeSignupService();
 
     await signupService.signupWithPassword({ email, password: 'correct horse battery', legalName: 'Quán Test Signup', industry: 'food_beverage' });
 
@@ -120,7 +143,7 @@ describe('Real login — signup, email verification, login, Google, password res
 
     await expect(loginService.login(email, 'correct horse battery')).rejects.toThrow(/verify your email/i);
 
-    const token = extractTokenFromHtml(capturedHtml);
+    const token = await extractTokenFromOutbox(tenantIds[0]!, userRow!.id, 'EMAIL_VERIFY');
     const result = await signupService.verifyEmail(token);
     expect(result.accessToken).toBeTruthy();
     expect(result.refreshToken).toBeTruthy();
@@ -141,13 +164,11 @@ describe('Real login — signup, email verification, login, Google, password res
 
   it('rejects wrong password and rejects a nonexistent email the same way (no user-existence leak)', async () => {
     const email = uniqueEmail('wrongpw');
-    let capturedHtml = '';
-    const spyEmail = { send: async (input: { html: string }) => { capturedHtml = input.html; } } as unknown as EmailService;
-    const signupService = new SignupService(
-      userRepository, sessionRepository, tenantRepository, memberRepository, passwordService, await getGoogleVerifier(), spyEmail, sessionMinter,
-    );
+    const signupService = await makeSignupService();
     await signupService.signupWithPassword({ email, password: 'the real password', legalName: 'Wrong PW Test', industry: 'agriculture' });
-    await signupService.verifyEmail(extractTokenFromHtml(capturedHtml));
+    const userId = await userIdByEmail(email);
+    const [tenantId] = await memberRepository.findTenantIdsForUser(userId);
+    await signupService.verifyEmail(await extractTokenFromOutbox(tenantId!, userId, 'EMAIL_VERIFY'));
 
     await expect(loginService.login(email, 'totally wrong')).rejects.toThrow(/INVALID_CREDENTIALS|Incorrect/i);
     await expect(loginService.login(uniqueEmail('never-signed-up'), 'anything')).rejects.toThrow(/INVALID_CREDENTIALS|Incorrect/i);
@@ -177,24 +198,16 @@ describe('Real login — signup, email verification, login, Google, password res
 
   it('forgot/reset password round-trip revokes existing sessions', async () => {
     const email = uniqueEmail('reset');
-    let verifyHtml = '';
-    let resetHtml = '';
-    const spyEmail = {
-      send: async (input: { html: string; subject: string }) => {
-        if (input.subject.includes('Xác thực')) verifyHtml = input.html;
-        else resetHtml = input.html;
-      },
-    } as unknown as EmailService;
-    const signupService = new SignupService(
-      userRepository, sessionRepository, tenantRepository, memberRepository, passwordService, await getGoogleVerifier(), spyEmail, sessionMinter,
-    );
+    const signupService = await makeSignupService();
 
     await signupService.signupWithPassword({ email, password: 'original password', legalName: 'Reset Test', industry: 'food_beverage' });
-    await signupService.verifyEmail(extractTokenFromHtml(verifyHtml));
+    const userId = await userIdByEmail(email);
+    const [tenantId] = await memberRepository.findTenantIdsForUser(userId);
+    await signupService.verifyEmail(await extractTokenFromOutbox(tenantId!, userId, 'EMAIL_VERIFY'));
     const session = await loginService.login(email, 'original password');
 
     await signupService.forgotPassword(email);
-    const resetToken = extractTokenFromHtml(resetHtml);
+    const resetToken = await extractTokenFromOutbox(tenantId!, userId, 'PASSWORD_RESET');
     await signupService.resetPassword(resetToken, 'brand new password');
 
     // Old refresh token must be revoked — findByTokenHash still finds the
@@ -211,10 +224,7 @@ describe('Real login — signup, email verification, login, Google, password res
 
   it('the email_verify authTokens row carries the tenant id set at signup', async () => {
     const email = uniqueEmail('tokenshape');
-    const spyEmail = { send: async () => {} } as unknown as EmailService;
-    const signupService = new SignupService(
-      userRepository, sessionRepository, tenantRepository, memberRepository, passwordService, await getGoogleVerifier(), spyEmail, sessionMinter,
-    );
+    const signupService = await makeSignupService();
     await signupService.signupWithPassword({ email, password: 'whatever password', legalName: 'Token Shape Test', industry: 'tourism' });
 
     const [userRow] = await db.select().from(users).where(eq(users.email, email));

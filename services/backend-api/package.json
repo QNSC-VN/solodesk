@@ -15,9 +15,12 @@
     "db:migrate:test": "NODE_ENV=test tsx src/db/migrate.ts",
     "mint-dev-token": "tsx scripts/mint-dev-token.ts",
     "worker:pdf": "node --watch -r ts-node/register/transpile-only src/worker-pdf.ts",
-    "worker:pdf:start": "node dist/worker-pdf.js"
+    "worker:pdf:start": "node dist/worker-pdf.js",
+    "worker:notifications": "node --watch -r ts-node/register/transpile-only src/worker-notifications.ts",
+    "worker:notifications:start": "node dist/worker-notifications.js"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1113.0",
     "@fastify/static": "^10.1.2",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
