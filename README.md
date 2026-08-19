@@ -80,7 +80,22 @@ GitHub repo, multiple independently-deployable services.
   narrow MVP mechanism, not SNS/SQS or a general service-mesh scheme yet).
   Verified end-to-end against two live dev servers — see CLAUDE.md.
 
-Not yet built: `apps/mobile`, `apps/web-*`.
+- `apps/web-buyer-portal` — the first of docs' 3 named Next.js apps
+  (`web-accounting`/`web-b2g-dashboard`/`web-buyer-portal`), scoped to
+  just its QR-traceability half (not "order confirmation," which needs
+  business/flow decisions this session shouldn't guess at). Next.js 16
+  App Router, one real route: `/trace/[lotId]`, calling backend-api's
+  already-real, public, unauthenticated `GET /v1/trace/:lotId`. Design
+  system at `design-system/solodesk/MASTER.md` (Agriculture/Farm Tech
+  palette — earth green + harvest gold, not generic SaaS blue — chosen
+  and verified via the `ui-ux-pro-max` skill, with 2 of its automatic
+  results manually overridden and the override reasoning documented
+  in-file: the typography match and the marketing-landing page pattern
+  neither fit a single-purpose lookup page). Reusable `Badge`/
+  `EmptyState`/`SiteHeader`/`SiteFooter` components, meant to be reused by
+  the other 2 apps once built.
+
+Not yet built: `apps/mobile`, `apps/web-accounting`, `apps/web-b2g-dashboard`.
 
 ## Local dev
 
@@ -106,6 +121,8 @@ pnpm --filter @solodesk/connector-hub dev        # :3001
 temporal server start-dev                        # separate terminal — :7233 gRPC, :8233 Web UI
 pnpm --filter @solodesk/agent-orchestrator worker  # separate terminal — the Activity executor
 pnpm --filter @solodesk/agent-orchestrator dev     # :3002 — the HTTP client
+cp apps/web-buyer-portal/.env.example apps/web-buyer-portal/.env.local
+pnpm --filter web-buyer-portal dev                 # :3000 default — pass --port to avoid clashing with backend-api
 ```
 
 Run the cross-tenant isolation gate locally before touching anything in

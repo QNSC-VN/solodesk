@@ -1111,3 +1111,98 @@ real HTTP call to a real running ml-analytics instance → real Postgres
 query via `solodesk_ml` → real linear-trend forecast computed from real
 seeded order data → correct `[MOCK]`-prefixed reply, confirming the full
 4-service chain actually works, not just each piece in isolation.
+
+## apps/web-buyer-portal — first frontend, scoped to what's already fully spec'd
+
+Picked as the next module after ml-analytics. Previously avoided all
+frontend work in this engagement on the grounds that mobile/web need
+design/UX input that isn't mine to guess at — that's still true for most
+of it, but docs Section 8/12 name 3 SPECIFIC Next.js apps
+(`web-accounting`, `web-b2g-dashboard`, `web-buyer-portal`), and
+`web-buyer-portal`'s own doc comment is "buyer-side order confirmation,
+QR traceability." The QR-traceability half is fully spec'd already by a
+real, existing, public backend endpoint
+(`GET /v1/trace/:lotId` — `@Public()`/`@SkipTenantContext()`, "the page a
+buyer reaches by scanning a QR code") — zero business-flow ambiguity, so
+it's the one frontend slice safe to build without user design input.
+Deliberately did NOT build "order confirmation" in this same app — that
+needs real flow decisions (what triggers it, what it shows, auth or not)
+this session shouldn't invent.
+
+**Design, before code**: the user explicitly asked to use the
+`ui-ux-pro-max` skill first, with reusable components for consistency
+across the (eventual) 3 apps. Ran it properly — `--design-system` +
+targeted `--domain color`/`typography`/`ux`/`product` searches + `--stack
+nextjs` — and persisted `design-system/solodesk/MASTER.md` +
+`design-system/solodesk/pages/buyer-portal-trace.md`. Two of the tool's
+own automatic picks were wrong for this product and manually overridden,
+with the override reasoning written directly into MASTER.md (per the
+skill's own "verify fit before applying" instruction, not a silent
+swap):
+1. Default color aggregation was generic SaaS trust-blue — re-queried
+   `--domain color` for "agriculture organic earthy trust" and got
+   Agriculture/Farm Tech's earth-green + harvest-gold palette instead, a
+   much better fit for a coffee/produce-lot provenance page and
+   genuinely NOT generic SaaS blue (the user's own stated goal).
+2. Default typography was "Fira Code / Fira Sans" (mood: dashboard, code,
+   technical) — fine for an admin analytics screen, wrong for a
+   consumer-facing trust page or general staff tools. Swapped to
+   "Corporate Trust" (Lexend + Source Sans 3), explicitly designed for
+   readability/accessibility, a better fit for all 3 planned apps.
+3. Default page PATTERN was "Feature-Rich Showcase" — a marketing/
+   conversion landing-page shape (hero, feature grid, social proof, CTA
+   repetition). None of the 3 planned apps are marketing pages; all 3 are
+   utility tools someone reaches by a direct link or login. Documented
+   this as a structural mismatch, not something to patch around, and
+   wrote the actual page pattern (header → single result card → footer)
+   as a page-level override instead.
+
+Reusable components (`components/Badge.tsx`, `EmptyState.tsx`,
+`SiteHeader.tsx`, `SiteFooter.tsx`) match MASTER.md's specs exactly (badge
+label never wraps, one atomic `role="status"` on async updates, empty
+state always has a title+next-action, never a blank screen) — meant to be
+copied into `web-accounting`/`web-b2g-dashboard` once those exist, same
+"copied, not shared via a package" convention this repo already uses for
+cross-service platform code.
+
+**A real bug found via a manual smoke test, not left unexplained**:
+`notFound()` in `/trace/[lotId]/page.tsx` returns a SOFT 404 (HTTP 200 +
+`<meta name="robots" content="noindex">`), not a real 404 status —
+confirmed via `curl -sD -` against both `next dev` and a real `next
+build && next start` production server, so not a dev-mode artifact.
+Root cause, found by reading Next 16's own bundled docs
+(`node_modules/next/dist/docs/`, since the framework's own
+auto-generated `AGENTS.md` warns training data may be stale for this
+version): having a `loading.tsx` alongside the route makes Next.js wrap
+the page in an implicit Suspense boundary, so the response starts
+streaming as `200` before this component's `notFound()` call can run —
+documented, known Next.js behavior ("the status code of the response
+cannot be updated" once streaming starts), not a bug in this code. A real
+404 status would need the not-found check to run in `proxy` (Next 16's
+renamed middleware) before the route streams at all. Decided this
+soft-404 is the right trade-off HERE, not a gap to close: this page is
+reached only via a direct QR-code link (never crawled — the `noindex` tag
+already handles that), so the loading-skeleton UX for real mobile buyers
+on slow connections matters more than a status code nothing but a
+compliance audit would check. Documented in a code comment on the page
+itself, not left as a silent surprise for whoever touches this file next.
+
+**Tests**: `test/trace.spec.ts` (Vitest) — real backend-api, real
+Postgres, no mocks, same discipline as every other service. This app has
+no DB role of its own (pure HTTP client of backend-api's public
+endpoint), so `DATABASE_ADMIN_URL` here is TEST-FIXTURE-SEEDING ONLY
+(seeds the full real tenant → sku → lot → lot_traces chain
+`TraceabilityService.publishLotTrace` would produce), never something the
+running app connects with. Covers: real published-lot data round-trips
+correctly, a lot with no supplier comes back with `supplierName: null`
+(not a crash), the not-found path throws `LotTraceNotFoundError` for a
+real nonexistent lot, `sourceChannelLabel()`'s known-value mapping and
+its title-case fallback for an unknown value (never renders a raw
+snake_case string), and `formatDate()`'s `vi-VN` formatting.
+
+Verified: `next build` clean (real TypeScript check via Next's own
+pipeline, since raw `tsc` can't see Next's auto-generated route-param
+types), ESLint clean, Vitest 7/7, and two real manual smoke tests against
+the actual running backend-api — a real published lot (rendered correctly,
+Vietnamese `sourceChannel` label mapped) and a nonexistent lot (correct
+not-found UI, confirmed soft-404 behavior as described above).
