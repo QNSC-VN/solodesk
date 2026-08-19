@@ -32,6 +32,7 @@ jobs:
       VAULT_MASTER_KEY: "3rHqZ0m8xQKp1nJf6vY9Ldc4Tz2Rw5Xe8Uq0BaHnMg="
       SEPAY_API_BASE_URL: https://my.sepay.vn/userapi
       GHN_API_BASE_URL: https://online-gateway.ghn.vn/shiip/public-api
+      GHTK_API_BASE_URL: https://services.giaohangtietkiem.vn
       SHOPEE_API_BASE_URL: https://partner.shopeemobile.com
       BACKEND_API_BASE_URL: http://localhost:3000/v1
       # Must match backend-api-ci.yml's value if a cross-service integration

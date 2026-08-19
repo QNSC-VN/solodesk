@@ -3,11 +3,11 @@ import { NotFoundException } from '@qnsc-vn/platform-http';
 import { VaultService } from '../vault/application/vault.service';
 import { SepayAdapter } from './sepay/sepay.adapter';
 import { GhnAdapter } from './ghn/ghn.adapter';
+import { GhtkAdapter } from './ghtk/ghtk.adapter';
 import { ShopeeAdapter } from './shopee/shopee.adapter';
 import {
   TiktokShopAdapter,
   LazadaAdapter,
-  GhtkAdapter,
   ViettelpostAdapter,
   MisaMeinvoiceAdapter,
   ViettelSinvoiceAdapter,
@@ -34,10 +34,10 @@ export class ConnectorVerificationService {
     private readonly vaultService: VaultService,
     sepay: SepayAdapter,
     ghn: GhnAdapter,
+    ghtk: GhtkAdapter,
     shopee: ShopeeAdapter,
     tiktokShop: TiktokShopAdapter,
     lazada: LazadaAdapter,
-    ghtk: GhtkAdapter,
     viettelpost: ViettelpostAdapter,
     misaMeinvoice: MisaMeinvoiceAdapter,
     viettelSinvoice: ViettelSinvoiceAdapter,

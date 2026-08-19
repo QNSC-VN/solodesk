@@ -4,8 +4,8 @@ import type { ConnectorProvider, CredentialPayload } from '../vault/domain/vault
 
 /**
  * Every provider named in docs/ARCHITECTURE.md Section 8 that is NOT one of
- * the 3 fully-wired reference connectors (SePay, GHN, Shopee — see their own
- * folders). Each of these throws loudly rather than pretending to work —
+ * the 4 fully-wired reference connectors (SePay, GHN, GHTK, Shopee — see
+ * their own folders). Each of these throws loudly rather than pretending to work —
  * an honest scope cut, not a silent gap. Real credential-signing/API-shape
  * logic per provider is deliberately NOT fabricated here (Vietnam e-invoice
  * XML/SOAP shapes, TikTok Shop OAuth, Lazada's signature scheme, etc. are
@@ -32,7 +32,6 @@ function makeStubAdapter(provider: ConnectorProvider, displayName: string) {
 
 export class TiktokShopAdapter extends makeStubAdapter('tiktok_shop', 'TikTok Shop') {}
 export class LazadaAdapter extends makeStubAdapter('lazada', 'Lazada') {}
-export class GhtkAdapter extends makeStubAdapter('ghtk', 'GHTK') {}
 export class ViettelpostAdapter extends makeStubAdapter('viettelpost', 'ViettelPost') {}
 export class MisaMeinvoiceAdapter extends makeStubAdapter('misa_meinvoice', 'MISA meInvoice') {}
 export class ViettelSinvoiceAdapter extends makeStubAdapter('viettel_sinvoice', 'Viettel S-Invoice') {}
@@ -46,7 +45,6 @@ export class NationalFreePlatformAdapter extends makeStubAdapter('national_free_
   providers: [
     TiktokShopAdapter,
     LazadaAdapter,
-    GhtkAdapter,
     ViettelpostAdapter,
     MisaMeinvoiceAdapter,
     ViettelSinvoiceAdapter,
@@ -58,7 +56,6 @@ export class NationalFreePlatformAdapter extends makeStubAdapter('national_free_
   exports: [
     TiktokShopAdapter,
     LazadaAdapter,
-    GhtkAdapter,
     ViettelpostAdapter,
     MisaMeinvoiceAdapter,
     ViettelSinvoiceAdapter,

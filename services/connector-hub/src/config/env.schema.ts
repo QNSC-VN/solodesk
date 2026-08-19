@@ -38,6 +38,7 @@ export const envSchema = z
     // discipline applied to endpoints, not just rates/thresholds).
     SEPAY_API_BASE_URL: z.string().default('https://my.sepay.vn/userapi'),
     GHN_API_BASE_URL: z.string().default('https://online-gateway.ghn.vn/shiip/public-api'),
+    GHTK_API_BASE_URL: z.string().default('https://services.giaohangtietkiem.vn'),
     SHOPEE_API_BASE_URL: z.string().default('https://partner.shopeemobile.com'),
 
     // Service-to-service forwarding — SepayWebhookController calling

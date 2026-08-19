@@ -540,7 +540,7 @@ running as a different process:
   breaker (or exhaust the retry budget) for GHN or SePay. Every adapter
   method wraps its real call in `callWithResilience(provider, fn)`.
 
-## Three reference connectors, real API shapes, NOT live-verified
+## Four reference connectors, real API shapes, NOT live-verified
 
 Scope decision (recorded here, not silently made): building real,
 untestable-without-keys integration logic for all 11+ providers docs
@@ -548,18 +548,39 @@ Section 8 lists risked confidently-wrong code across many at once. Built
 for real: **SePay** (VietQR — pull API in `sepay.adapter.ts` + inbound
 webhook in `sepay-webhook.controller.ts`, the two-factor token+secret
 resolution described above), **GHN** (shipping — order create/track,
-`Token`/`ShopId` header auth), **Shopee** (marketplace — Open Platform v2
-HMAC-SHA256 request signing). Every method's field/endpoint shape matches
-each provider's public docs as accurately as training knowledge allows,
-but NONE of the three has been exercised against a live account — that
-needs the user's real keys, entered via `POST /v1/vault/:provider/credentials`,
-then confirmed via `POST /v1/connectors/:provider/verify` (a real API call,
-not a format check). The remaining providers (`stub-connectors.ts`:
-TikTok Shop, Lazada, GHTK, ViettelPost, MISA meInvoice, Viettel S-Invoice,
-VNPT Invoice, Booking.com, Agoda, national-free-platform) throw a clear
-not-implemented error rather than fabricate signing/API logic — promote
-one by moving it to its own `connectors/<provider>/` folder following
-`sepay.adapter.ts`'s shape.
+`Token`/`ShopId` header auth), **GHTK** (shipping — order create/track,
+plain `Token` header auth, promoted from a stub — see the section below
+on why it was promoted before an e-invoice provider), **Shopee**
+(marketplace — Open Platform v2 HMAC-SHA256 request signing). Every
+method's field/endpoint shape matches each provider's public docs as
+accurately as training knowledge allows, but NONE of the four has been
+exercised against a live account — that needs the user's real keys,
+entered via `POST /v1/vault/:provider/credentials`, then confirmed via
+`POST /v1/connectors/:provider/verify` (a real API call, not a format
+check). The remaining providers (`stub-connectors.ts`: TikTok Shop,
+Lazada, ViettelPost, MISA meInvoice, Viettel S-Invoice, VNPT Invoice,
+Booking.com, Agoda, national-free-platform) throw a clear not-implemented
+error rather than fabricate signing/API logic — promote one by moving it
+to its own `connectors/<provider>/` folder following `sepay.adapter.ts`'s
+shape.
+
+## Why GHTK (shipping) was promoted next, not an e-invoice provider
+
+`tax.invoices.requires_e_invoice` (backend-api) has been computed
+correctly since the `invoicing-tax` module was built, but nothing acts on
+it — no e-invoice ever actually gets submitted anywhere. That's the more
+"valuable" gap to close, and MISA meInvoice/Viettel S-Invoice/VNPT
+Invoice would close it. They were deliberately passed over anyway: those
+three are the ones this repo's own earlier scope note already flagged as
+the highest-risk category — typically SOAP/XML with digital-signature
+requirements, not simple JSON REST like SePay/GHN/Shopee/GHTK. Building
+one now would reintroduce exactly the "confidently-wrong code without a
+way to verify it" risk the original 3-connector scope cut existed to
+avoid. GHTK's `Token`-header REST shape is nearly identical to GHN's
+already-working pattern — the safer next connector, not the most valuable
+gap. The e-invoice gap is real and still open; closing it needs either a
+provider with genuine REST docs or a live sandbox account to verify
+against, neither of which changed by promoting GHTK.
 
 ## SePay webhook → `payment-reconcile` forwarding — done, via a shared-secret MVP, not SNS/SQS
 
