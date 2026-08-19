@@ -1,0 +1,6 @@
+packages:
+  - "apps/web-*"
+  - "services/backend-api"
+  - "services/agent-orchestrator"
+  - "services/connector-hub"
+  - "packages/*"

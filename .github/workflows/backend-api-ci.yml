@@ -1,0 +1,110 @@
+name: backend-api CI
+
+# Reuses QNSC-VN/qnsc-ci composite actions unchanged (docs Section 17.3) —
+# product-agnostic mechanism already proven on rally. Do not fork these
+# actions into this repo; version-pin the ref instead.
+
+on:
+  pull_request:
+    paths:
+      - "services/backend-api/**"
+      - "packages/**"
+      - ".github/workflows/backend-api-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/backend-api/**"
+      - "packages/**"
+
+env:
+  QNSC_CI_REF: main # pin to a released tag once qnsc-ci cuts one
+
+permissions:
+  contents: read
+  packages: read # @qnsc-vn/* is private GitHub Packages — GITHUB_TOKEN needs read:packages
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REDIS_URL: redis://localhost:6379
+      JWT_ISSUER: solodesk
+      JWT_AUDIENCE: solodesk-api
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: solodesk_test
+          POSTGRES_USER: solodesk_superuser
+          POSTGRES_PASSWORD: ci_only_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U solodesk_superuser -d solodesk_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      valkey:
+        image: valkey/valkey:8
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node + pnpm
+        uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@${{ env.QNSC_CI_REF }}
+        with:
+          node-version: "24"
+
+      # Ephemeral ES256 keypair for this CI run only — never a stored secret,
+      # since it signs nothing outside this job's own test tokens (mirrors
+      # scripts/mint-dev-token.ts's dev-only role, see auth.module.ts).
+      - name: Generate ephemeral test JWT keypair
+        id: jwt-keys
+        run: |
+          node -e "
+            const { generateKeyPairSync } = require('crypto');
+            const { publicKey, privateKey } = generateKeyPairSync('ec', {
+              namedCurve: 'P-256',
+              publicKeyEncoding: { type: 'spki', format: 'pem' },
+              privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+            });
+            const fs = require('fs');
+            fs.writeFileSync(process.env.GITHUB_ENV, 'JWT_PUBLIC_KEY<<EOF\n' + publicKey + 'EOF\n', { flag: 'a' });
+            fs.writeFileSync(process.env.GITHUB_ENV, 'DEV_JWT_PRIVATE_KEY<<EOF\n' + privateKey + 'EOF\n', { flag: 'a' });
+          "
+
+      - name: Run migrations + app-role safety gate (test DB)
+        working-directory: services/backend-api
+        env:
+          DATABASE_ADMIN_URL: postgres://solodesk_superuser:ci_only_password@localhost:5432/solodesk_test
+          SOLODESK_APP_ROLE_PASSWORD: ci_only_app_password
+        run: pnpm db:migrate:test
+
+      - name: Lint
+        run: pnpm --filter @solodesk/backend-api lint
+
+      - name: Typecheck
+        run: pnpm --filter @solodesk/backend-api typecheck
+
+      - name: Unit tests
+        run: pnpm --filter @solodesk/backend-api test
+
+      - name: E2E tests (Section 4.5 cross-tenant isolation gate — must not be skipped)
+        working-directory: services/backend-api
+        env:
+          DATABASE_URL: postgres://solodesk_app:ci_only_app_password@localhost:5432/solodesk_test
+        run: pnpm test:e2e
+
+      - name: Scan secrets
+        uses: QNSC-VN/qnsc-ci/actions/scan-secrets@${{ env.QNSC_CI_REF }}
+
+      - name: Validate OpenAPI contract (internal REST boundary, Section 3 internal-call design)
+        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@${{ env.QNSC_CI_REF }}
+        with:
+          working-directory: services/backend-api
+
+  # build-push-ecr / run-db-migration (prod) / ecs-run-task / verify-ecs-deploy /
+  # post-deploy-health-check / attest-image / notify-deploy wire up in a
+  # follow-on deploy.yml once services/backend-api has something worth shipping
+  # past Sprint 0 — deliberately not stubbed here (Mục 20.6 YAGNI).
