@@ -33,6 +33,11 @@ export class LotTraceDrizzleRepository implements ILotTraceRepository {
   }
 
   async upsert(tenantId: string, lotId: string, input: PublishLotTraceInput): Promise<LotTrace> {
+    // Same clock source (Node's `new Date()`) on both the insert and update
+    // branches — relying on the column's `defaultNow()` for the insert path
+    // compares a Postgres-clock timestamp against a Node-clock timestamp on
+    // republish, which any clock skew between the two processes breaks.
+    const publishedAt = new Date();
     const rows = await db
       .insert(lotTraces)
       .values({
@@ -44,6 +49,7 @@ export class LotTraceDrizzleRepository implements ILotTraceRepository {
         sourceChannel: input.sourceChannel,
         supplierName: input.supplierName,
         receivedAt: input.receivedAt,
+        publishedAt,
       })
       .onConflictDoUpdate({
         target: lotTraces.lotId,
@@ -54,7 +60,7 @@ export class LotTraceDrizzleRepository implements ILotTraceRepository {
           sourceChannel: input.sourceChannel,
           supplierName: input.supplierName,
           receivedAt: input.receivedAt,
-          publishedAt: new Date(),
+          publishedAt,
         },
       })
       .returning();
