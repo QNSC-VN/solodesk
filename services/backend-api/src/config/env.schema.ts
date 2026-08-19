@@ -27,6 +27,13 @@ export const envSchema = z.object({
   // service that can both sign and verify its own tokens is not authenticating
   // anyone, it's trusting itself.
   DEV_JWT_PRIVATE_KEY: z.string().optional(),
+
+  // Service-to-service — the ONLY route family this gates is
+  // internal/payments (connector-hub forwarding a verified SePay payment
+  // event). NOT a general internal-auth mechanism; a real mTLS/service-mesh
+  // scheme is future work once more than one such route family exists
+  // (see CLAUDE.md's connector-hub -> payment-reconcile section).
+  INTERNAL_SERVICE_TOKEN: z.string().min(32, 'INTERNAL_SERVICE_TOKEN must be a real random secret, same value configured in connector-hub — checked via constant-time compare in InternalServiceGuard'),
 }).refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
   message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production — same guard rally uses for its dev-login path (see rally CLAUDE.md "Environment flags that look wrong and are not").',
   path: ['DEV_JWT_PRIVATE_KEY'],

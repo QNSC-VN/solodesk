@@ -49,6 +49,20 @@ export class PaymentService {
     return this.paymentRepository.create(tenantId, input);
   }
 
+  /**
+   * Same rule as `recordPayment`, entry point keyed by the human-readable
+   * invoice number instead of its UUID — the form connector-hub's SePay
+   * webhook forwarding has, since a bank-transfer content/QR note carries
+   * `INV-2026-000001`, never an internal id. Delegates to `recordPayment`
+   * once the invoice is resolved, so every guard (cancelled/duplicate-
+   * reference/overpayment) applies identically regardless of entry point.
+   */
+  async recordPaymentByInvoiceNumber(tenantId: string, invoiceNumber: string, input: Omit<CreatePaymentInput, 'invoiceId'>): Promise<Payment> {
+    assertTenantMatchesSession(tenantId);
+    const invoice = await this.invoiceService.getInvoiceByNumber(tenantId, invoiceNumber);
+    return this.recordPayment(tenantId, { ...input, invoiceId: invoice.id });
+  }
+
   async listPayments(invoiceId: string, tenantId: string): Promise<Payment[]> {
     assertTenantMatchesSession(tenantId);
     await this.invoiceService.getInvoice(invoiceId, tenantId); // 404s if missing/cross-tenant

@@ -561,12 +561,56 @@ not-implemented error rather than fabricate signing/API logic — promote
 one by moving it to its own `connectors/<provider>/` folder following
 `sepay.adapter.ts`'s shape.
 
-## Explicitly NOT done yet — the next real step
+## SePay webhook → `payment-reconcile` forwarding — done, via a shared-secret MVP, not SNS/SQS
 
-`SepayWebhookController` stops at "verified, deduped, normalized event
-stored in `sync.webhook_events`." It does NOT forward the payment event to
-backend-api's `payment-reconcile` module — that needs either an
-authenticated service-to-service HTTP call or SNS/SQS (docs Section 6,
-once that event infra exists), a real but separately-scoped feature, not
-built here. Don't assume a SePay webhook currently reaches `POST
-/v1/payments` in backend-api — it doesn't yet.
+`SepayWebhookController` now forwards a verified, deduped, `transferType:
+"in"` payment event to backend-api's `POST /internal/payments/by-invoice-number`
+whenever it can extract an `INV-YYYY-NNNNNN` pattern from the transfer's
+`content` (`sepay/extract-invoice-number.ts`) — the note a VietQR payer's
+bank app carries through, matching `InvoiceDrizzleRepository`'s assigned
+format exactly. Verified end-to-end against two live dev servers: onboard
+→ SKU → lot → order → invoice → set SePay creds → real webhook POST →
+`forwarded: true` → backend-api's payment summary shows `isFullyPaid`.
+
+- **Authentication is a pre-shared secret (`INTERNAL_SERVICE_TOKEN`), NOT
+  SNS/SQS (docs Section 6) and NOT a per-user JWT.** Both services validate
+  the exact same value — connector-hub sends it as `X-Internal-Service-Token`,
+  backend-api's `InternalServiceGuard` checks it with `timingSafeEqual`
+  (constant-time, avoids a timing side-channel). This is a deliberate,
+  narrow, honest MVP mechanism for exactly ONE route family
+  (`internal/payments/*`) — not a general service-mesh/mTLS scheme. Revisit
+  before this pattern gets a second consumer.
+- **The receiving route is `@Public()` + `@SkipTenantContext()`** — there's
+  no per-user session on a machine-to-machine call, so `tenantId` travels
+  explicitly in the request body instead of a JWT's `contextId`, and the
+  handler manually `runWithTenant(dto.tenantId, ...)`s before calling
+  `PaymentService`. `@ApiExcludeController()` keeps it out of the Swagger
+  doc — reachable at the same base URL, but not a public API surface.
+  `PaymentService.recordPaymentByInvoiceNumber` resolves the invoice via
+  `InvoiceService.getInvoiceByNumber` (new: invoice numbers are the
+  human-readable form a bank-transfer note carries, never a UUID) then
+  delegates straight to the existing `recordPayment` — every guard
+  (cancelled/duplicate-reference/overpayment) applies identically
+  regardless of which entry point reached it.
+- **`sync.webhook_events.forwarded_at` (nullable) separates "seen" from
+  "successfully synced downstream"** — the column this repo's own earlier
+  YAGNI note said to add only once forwarding was actually being built.
+  Deliberately NOT caught inside `SepayWebhookController`: letting a
+  forward failure throw returns a non-2xx response, which is what makes
+  SePay's OWN webhook redelivery double as the retry mechanism for the
+  forward step (`forwarded_at` stays NULL until a forward attempt actually
+  succeeds) — there is no internal retry queue yet, and this is an
+  explicit, honest MVP choice, not an oversight.
+- **One narrow edge case handled on purpose:** a `409
+  DUPLICATE_PAYMENT_REFERENCE` from backend-api PROVES the payment already
+  landed on some earlier attempt (connector-hub crashed after backend-api
+  committed but before `markForwarded` ran) — `BackendApiPaymentClient
+  .forwardPayment` treats that specific error as success rather than
+  re-throwing it, because re-throwing it would retry forever (backend-api
+  correctly rejects the exact same duplicate every time) with `forwarded_at`
+  never getting set — a real livelock a payment system cannot afford.
+- **Still explicitly NOT built:** GHN/Shopee have no equivalent forwarding
+  path yet (nothing downstream needs one today); a genuine SNS/SQS event
+  bus (docs Section 6) if/when a second consumer of these events shows up,
+  since a growing number of pre-shared-secret point-to-point integrations
+  is exactly the coupling an event bus exists to avoid.

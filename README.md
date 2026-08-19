@@ -32,10 +32,14 @@ GitHub repo, multiple independently-deployable services.
   `services/connector-hub/test/role-isolation.e2e-spec.ts`) must never be
   weakened to make them pass.
 
+- connector-hub's SePay webhook forwards a verified payment straight into
+  backend-api's `payment-reconcile` (`POST /internal/payments/by-invoice-number`,
+  authenticated by a shared `INTERNAL_SERVICE_TOKEN` secret — an explicit,
+  narrow MVP mechanism, not SNS/SQS or a general service-mesh scheme yet).
+  Verified end-to-end against two live dev servers — see CLAUDE.md.
+
 Not yet built: `apps/mobile`, `apps/web-*`, `services/agent-orchestrator`,
-`services/ml-analytics`. Also not yet done: wiring connector-hub's SePay
-webhook intake forward into backend-api's `payment-reconcile` (needs a
-service-to-service call or SNS/SQS, docs Section 6) — see CLAUDE.md.
+`services/ml-analytics`.
 
 ## Local dev
 

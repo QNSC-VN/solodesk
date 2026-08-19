@@ -16,6 +16,7 @@ function toDomain(row: typeof webhookEvents.$inferSelect): StoredWebhookEvent {
     occurredAt: row.occurredAt,
     receivedAt: row.receivedAt,
     payload: row.payload as Record<string, unknown>,
+    forwardedAt: row.forwardedAt,
   };
 }
 
@@ -47,6 +48,12 @@ export class WebhookEventDrizzleRepository implements IWebhookEventRepository {
         .where(and(eq(webhookEvents.provider, provider), eq(webhookEvents.providerEventId, providerEventId)))
         .limit(1);
       return rows[0] ? toDomain(rows[0]) : null;
+    });
+  }
+
+  async markForwarded(id: string, tenantId: string): Promise<void> {
+    await withTenantTransaction(db, tenantId, async (tx) => {
+      await tx.update(webhookEvents).set({ forwardedAt: new Date() }).where(and(eq(webhookEvents.id, id), eq(webhookEvents.tenantId, tenantId)));
     });
   }
 }

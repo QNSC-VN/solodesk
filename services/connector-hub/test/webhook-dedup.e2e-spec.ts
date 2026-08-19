@@ -71,4 +71,28 @@ describe('Webhook intake dedup (docs Section 7) — real Postgres, no mocks', ()
     expect(ghnEvent.isNew).toBe(true);
     expect(sepayEvent.event.id).not.toBe(ghnEvent.event.id);
   });
+
+  it('forwardedAt starts NULL and is set only after markForwarded is called — a redelivery before that still sees it unset', async () => {
+    const tenantId = uuidv7();
+    const event = {
+      tenantId,
+      provider: 'sepay',
+      providerEventId: `sepay-evt-forward-${Date.now()}`,
+      eventType: 'payment.received',
+      occurredAt: new Date(),
+      payload: { transferAmount: 100000 },
+    };
+
+    const first = await runWithTenant(tenantId, () => webhookIntakeService.recordEvent(event));
+    expect(first.event.forwardedAt).toBeNull();
+
+    // Simulates a redelivery before forwarding ever succeeded — still unset.
+    const redelivered = await runWithTenant(tenantId, () => webhookIntakeService.recordEvent(event));
+    expect(redelivered.event.forwardedAt).toBeNull();
+
+    await runWithTenant(tenantId, () => webhookIntakeService.markForwarded(first.event.id, tenantId));
+
+    const afterForward = await runWithTenant(tenantId, () => webhookIntakeService.recordEvent(event));
+    expect(afterForward.event.forwardedAt).not.toBeNull();
+  });
 });

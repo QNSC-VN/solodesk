@@ -6,6 +6,8 @@ import { SkipTenantContext } from '../../../platform/skip-tenant-context.decorat
 import { runWithTenant } from '../../../platform/tenant-context';
 import { VaultService } from '../../vault/application/vault.service';
 import { WebhookIntakeService } from '../../webhooks/application/webhook-intake.service';
+import { BackendApiPaymentClient } from '../../webhooks/backend-api-payment.client';
+import { extractInvoiceNumber } from './extract-invoice-number';
 import type { SepayCredentials } from './sepay.adapter';
 
 /**
@@ -28,6 +30,7 @@ export class SepayWebhookController {
   constructor(
     private readonly vaultService: VaultService,
     private readonly webhookIntakeService: WebhookIntakeService,
+    private readonly backendApiPaymentClient: BackendApiPaymentClient,
   ) {}
 
   @Post(':token')
@@ -38,7 +41,7 @@ export class SepayWebhookController {
     @Param('token') token: string,
     @Headers('authorization') authHeader: string | undefined,
     @Body() body: Record<string, unknown>,
-  ): Promise<{ success: boolean; deduplicated: boolean }> {
+  ): Promise<{ success: boolean; deduplicated: boolean; forwarded: boolean }> {
     const resolved = await this.vaultService.resolveWebhookToken(token);
     if (!resolved || resolved.provider !== 'sepay') {
       throw new NotFoundException('WEBHOOK_TOKEN_NOT_FOUND', 'Unknown or wrong-provider webhook token.');
@@ -59,7 +62,7 @@ export class SepayWebhookController {
       // appending "Z" directly would silently misdate every event by 7 hours.
       const occurredAt = new Date(`${rawDate.replace(' ', 'T')}+07:00`);
 
-      const { isNew } = await this.webhookIntakeService.recordEvent({
+      const { event, isNew } = await this.webhookIntakeService.recordEvent({
         tenantId: resolved.tenantId,
         provider: 'sepay',
         providerEventId: String(body['id']),
@@ -68,7 +71,31 @@ export class SepayWebhookController {
         payload: body,
       });
 
-      return { success: true, deduplicated: !isNew };
+      // "in" only — an outbound transfer from the tenant's own account is
+      // not a customer payment to reconcile. Already-forwarded events skip
+      // straight past this even on a redelivered (isNew=false) event.
+      let forwarded = false;
+      if (body['transferType'] === 'in' && !event.forwardedAt) {
+        const invoiceNumber = extractInvoiceNumber(String(body['content'] ?? ''));
+        if (invoiceNumber) {
+          // Deliberately NOT caught here — letting this throw returns a
+          // non-2xx response, which is what makes SePay's own webhook
+          // redelivery double as our retry mechanism (forwardedAt stays
+          // NULL until a forward attempt actually succeeds; there is no
+          // internal retry queue yet — see CLAUDE.md).
+          await this.backendApiPaymentClient.forwardPayment({
+            tenantId: resolved.tenantId,
+            invoiceNumber,
+            method: 'bank_transfer',
+            amount: String(body['transferAmount'] ?? '0'),
+            referenceCode: String(body['referenceCode'] ?? body['id']),
+          });
+          await this.webhookIntakeService.markForwarded(event.id, resolved.tenantId);
+          forwarded = true;
+        }
+      }
+
+      return { success: true, deduplicated: !isNew, forwarded };
     });
   }
 }

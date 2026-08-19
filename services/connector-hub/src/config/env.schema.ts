@@ -39,6 +39,12 @@ export const envSchema = z
     SEPAY_API_BASE_URL: z.string().default('https://my.sepay.vn/userapi'),
     GHN_API_BASE_URL: z.string().default('https://online-gateway.ghn.vn/shiip/public-api'),
     SHOPEE_API_BASE_URL: z.string().default('https://partner.shopeemobile.com'),
+
+    // Service-to-service forwarding — SepayWebhookController calling
+    // backend-api's POST /internal/payments/by-invoice-number. Same shared
+    // secret MUST be set in backend-api/.env's INTERNAL_SERVICE_TOKEN.
+    BACKEND_API_BASE_URL: z.string().default('http://localhost:3000/v1'),
+    INTERNAL_SERVICE_TOKEN: z.string().min(32, 'INTERNAL_SERVICE_TOKEN must match backend-api\'s value exactly — see its env.schema.ts'),
   })
   .refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
     message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production.',

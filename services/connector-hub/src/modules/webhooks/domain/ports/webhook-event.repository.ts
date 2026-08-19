@@ -6,4 +6,6 @@ export interface IWebhookEventRepository {
   /** `INSERT ... ON CONFLICT (provider, provider_event_id) DO NOTHING` — returns `null` if this exact event was already recorded (a retried delivery), never throws on a duplicate. */
   recordIfNew(event: NormalizedWebhookEvent): Promise<StoredWebhookEvent | null>;
   findByProviderEventId(provider: string, providerEventId: string, tenantId: string): Promise<StoredWebhookEvent | null>;
+  /** Idempotent — marking an already-forwarded event forwarded again is a harmless no-op. */
+  markForwarded(id: string, tenantId: string): Promise<void>;
 }

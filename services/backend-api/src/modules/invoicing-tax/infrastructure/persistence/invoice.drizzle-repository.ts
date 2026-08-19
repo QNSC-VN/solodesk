@@ -57,6 +57,17 @@ export class InvoiceDrizzleRepository implements IInvoiceRepository {
     });
   }
 
+  async findByInvoiceNumber(invoiceNumber: string, tenantId: string): Promise<Invoice | null> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.invoiceNumber, invoiceNumber), eq(invoices.tenantId, tenantId)))
+        .limit(1);
+      return rows[0] ? toDomain(rows[0]) : null;
+    });
+  }
+
   async listByTenant(tenantId: string): Promise<Invoice[]> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const rows = await tx.select().from(invoices).where(eq(invoices.tenantId, tenantId));

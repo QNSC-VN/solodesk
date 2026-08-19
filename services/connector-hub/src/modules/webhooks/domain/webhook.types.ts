@@ -11,4 +11,5 @@ export interface NormalizedWebhookEvent {
 export interface StoredWebhookEvent extends NormalizedWebhookEvent {
   id: string;
   receivedAt: Date;
+  forwardedAt: Date | null;
 }

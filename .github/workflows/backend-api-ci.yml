@@ -31,6 +31,9 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_ISSUER: solodesk
       JWT_AUDIENCE: solodesk-api
+      # CI-only shared secret — must match connector-hub-ci.yml's value if a
+      # cross-service integration test ever runs both in one job.
+      INTERNAL_SERVICE_TOKEN: "ci-only-internal-service-token-32-bytes-min"
     services:
       postgres:
         image: postgres:18

@@ -13,6 +13,8 @@ export const webhookEvents = syncSchema.table(
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     payload: jsonb('payload').notNull(),
+    /** NULL = not yet successfully forwarded downstream (e.g. to backend-api's payment-reconcile). See migration 0004's header comment. */
+    forwardedAt: timestamp('forwarded_at', { withTimezone: true }),
   },
   (t) => ({
     providerEventUnique: unique().on(t.provider, t.providerEventId),

@@ -71,4 +71,14 @@ export class InvoiceService {
     assertTenantMatchesSession(tenantId);
     return this.invoiceRepository.listByTenant(tenantId);
   }
+
+  /** Human-readable lookup — the form a bank-transfer content/QR note carries. Used by connector-hub's forwarded-payment path (see `payment-reconcile`'s internal controller). */
+  async getInvoiceByNumber(tenantId: string, invoiceNumber: string): Promise<Invoice> {
+    assertTenantMatchesSession(tenantId);
+    const invoice = await this.invoiceRepository.findByInvoiceNumber(invoiceNumber, tenantId);
+    if (!invoice) {
+      throw new NotFoundException('INVOICE_NOT_FOUND', `Invoice "${invoiceNumber}" not found`);
+    }
+    return invoice;
+  }
 }

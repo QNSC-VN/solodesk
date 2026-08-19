@@ -25,4 +25,9 @@ export class WebhookIntakeService {
     }
     return { event: existing, isNew: false };
   }
+
+  /** Call after a downstream forward (e.g. to backend-api) actually succeeds — separate from `isNew`, since "seen before" and "successfully synced" are different questions (see `sync.webhook_events`'s migration 0004). */
+  async markForwarded(eventId: string, tenantId: string): Promise<void> {
+    await this.webhookEventRepository.markForwarded(eventId, tenantId);
+  }
 }
