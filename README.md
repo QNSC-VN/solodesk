@@ -52,7 +52,16 @@ GitHub repo, multiple independently-deployable services.
   Vietnamese tax/registration law, see that script's header comment.
   Also calls the 4th deployable's `/v1/forecast` endpoint via a new
   `get_sales_forecast` tool, from inside this Activity (never
-  synchronously outside a Workflow/Activity).
+  synchronously outside a Workflow/Activity). A second conversation
+  `mode` (`'onboarding'`, docs Section 5.4) gives the AI WRITE-capable
+  setup tools (`set_business_profile`, `add_first_product`,
+  `connect_sepay`) to walk a new household business through setup
+  step-by-step in plain Vietnamese — fixed once at workflow start, never
+  mixed into the default read-only `'assistant'` mode. Writes still never
+  touch another service's schema directly: the onboarding tools call
+  backend-api's/connector-hub's own internal HTTP endpoints via the same
+  `INTERNAL_SERVICE_TOKEN` mechanism, connector-hub's first time as a
+  receiver of it. See CLAUDE.md for the full design.
 - `services/ml-analytics` — the 4th deployable, and the first NOT in
   Node/TypeScript: Python/FastAPI + asyncpg. Own Postgres role
   `solodesk_ml`, SELECT-only on `sales.orders`, same least-privilege/RLS

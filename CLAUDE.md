@@ -1339,3 +1339,104 @@ touched by this fix): undo + audit log, real login/session-recovery (no
 AuthService wired, dev-token-minting only), returns/exchanges linked to
 an order, and confirming cash-specific reconciliation is modeled
 distinctly from the general payment-recording path.
+
+## AI-guided onboarding conversation — docs Section 5.4 made real, spanning all 3 services
+
+Picked after the user asked to build one complete end-to-end AI-driven
+flow for the product's actual target audience (elderly/non-technical
+household-business owners in the Gia Lai formalization program): a new
+conversation `mode` that walks a fresh tenant through setup step-by-step
+in plain Vietnamese — business type/industry, business name, an offer to
+connect SePay, and adding a first product — matching docs Section 5.4's
+own description almost verbatim ("agent proposes a step → calls a broker
+tool to execute it → calls a read-only verification endpoint → reports
+the outcome... the AI agent never sees a raw secret").
+
+**The security boundary this had to preserve, by construction, not by
+convention**: the existing default assistant conversation is read-only
+because `solodesk_agent`'s Postgres grants are SELECT-only, full stop.
+Onboarding genuinely needs to WRITE (create/update a tenant's profile,
+add a SKU, store a SePay credential) — giving the regular assistant
+conversation that capability, even gated by careful prompting, would
+have been the wrong shape; a jailbroken or confused model in an ordinary
+support chat must never be able to touch data. Solved by making `mode:
+'assistant' | 'onboarding'` a Temporal workflow argument, fixed once when
+`agentConversationWorkflow` starts and never changed mid-conversation —
+`toolsForMode()`/`systemPromptForMode()` in `run-agent-turn.activity.ts`
+select an entirely separate `ONBOARDING_TOOLS` registry + system prompt,
+never merged into the default `ASSISTANT_TOOLS`. The only way to reach a
+write-capable conversation is to explicitly start one with `mode:
+'onboarding'` (`POST /v1/conversations`) — the default stays exactly as
+read-only as before.
+
+**Writes still never touch another service's schema directly.**
+agent-orchestrator's Postgres role is read-only by design (see above) —
+so the 3 new tools (`set_business_profile`, `add_first_product`,
+`connect_sepay`) call backend-api's/connector-hub's own HTTP APIs, the
+same `INTERNAL_SERVICE_TOKEN` + `InternalServiceGuard` + `@Public()` +
+`@SkipTenantContext()` shape already established for connector-hub→
+backend-api (SePay forwarding) and agent-orchestrator→ml-analytics (sales
+forecast) — now proven to generalize a second and third time. **connector-hub
+is a receiver of this pattern for the first time** (previously only ever
+a sender) — `InternalServiceGuard` copied over verbatim, same
+constant-time comparison.
+
+**Narrowed the actual new-capability surface by checking what already
+existed first**: `POST /v1/tenants` was already `@Public()`/
+`@SkipTenantContext()` (pre-existing, tenant creation itself needed no
+new endpoint) — the real new surface was just tenant PROFILE UPDATE (no
+update method existed before: `TenantService.updateProfile`, new
+`internal/onboarding/tenants/:tenantId/profile` route), SKU creation
+(reused `CatalogService.createSku` as-is, just a new tenant-explicit
+entry point), and vault credential SET (reused `VaultService
+.setCredentials` as-is, same reasoning). `TenantService.updateProfile`
+deliberately does NOT call `runWithTenant` — `tenants` isn't RLS-scoped
+(see this file's top rule), matching `createTenant`/`getTenant`'s
+existing shape; the new SKU and vault-credential routes DO call
+`runWithTenant(tenantId, ...)` first, since both those tables are
+RLS-scoped and there's no per-request middleware entering that context
+for a machine caller.
+
+**Mock mode needed a turn-numbered state machine, not a single keyword
+branch.** Every other mocked tool call in this codebase answers one
+question per turn; onboarding is a real multi-turn flow with no NLU to
+drive branching in demo mode. `runOnboardingTurnMocked` counts
+`turn = history.length / 2` and advances through a fixed 5-step sequence
+(industry → legal name → SePay yes/no → first product → completion
+summary), calling the exact same real tool functions against the exact
+same real Postgres/HTTP endpoints as the non-mocked path — same "mock
+mode only stands in for the one thing that costs real money" discipline
+as every other mocked path in this codebase, never a fabricated outcome.
+
+**A known, accepted demo-mode limitation, reasoned through and left
+as-is**: the mock industry classifier's keyword list checks
+`food_beverage` before `agriculture`, so "Toi ban ca phe rang xay, trong
+ca phe" (selling roasted coffee, ALSO growing coffee) matches
+`food_beverage` even though "ca phe rang" more specifically suggests
+`agriculture`. Not fixed — the real Claude model in non-mock mode
+handles this correctly via genuine language understanding; the mocked
+path is a demo stand-in, not the real classifier, and sharpening its
+keyword-priority order buys nothing for actual production behavior.
+
+**A retroactive CI gap found and fixed while adding this feature's own
+env vars**: `agent-orchestrator-ci.yml` was missing `ML_ANALYTICS_BASE_URL`
+and `INTERNAL_SERVICE_TOKEN` from the ml-analytics module — never caught
+because this service's e2e tests don't boot the full Nest app, only the
+config-error path for tools that need those vars. Added them alongside
+this feature's own new `BACKEND_API_BASE_URL`/`CONNECTOR_HUB_BASE_URL`.
+
+Verified: typecheck clean across all 3 services, full e2e suites green
+(backend-api 57/57, connector-hub 12/12, agent-orchestrator 35/35). Real
+manual end-to-end smoke test against the live dev stack (not just unit-
+level service tests): a fresh placeholder tenant → a real 5-turn
+`mode: 'onboarding'` conversation → real tenant profile update (industry
++ legal name), real SKU creation, real encrypted SePay vault credential
+write — each confirmed via direct DB/API queries afterward, not assumed
+from the conversation reply alone — and confirmed the new internal
+endpoints correctly reject an unauthenticated request without mutating
+any data. Also confirmed the refactor to `run-agent-turn.activity.ts`
+(renaming `TOOLS`→`ASSISTANT_TOOLS`, `SYSTEM_PROMPT`→
+`ASSISTANT_SYSTEM_PROMPT`, splitting the mock dispatcher) didn't break
+the pre-existing default assistant-mode flow: started a fresh default-mode
+conversation and confirmed a real stock question still gets the correct
+mocked reply.
