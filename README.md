@@ -18,12 +18,13 @@ GitHub repo, multiple independently-deployable services.
   own `vault`/`sync` schemas — see `CLAUDE.md`'s connector-hub section for
   the security-boundary rationale). Credential vault (AES-256-GCM at
   rest), webhook intake with dedup, resilience layer (circuit breaker +
-  retry classification, per-provider bulkhead). Five reference connectors
+  retry classification, per-provider bulkhead). Six reference connectors
   with real (not live-verified) API shapes: SePay VietQR, GHN, GHTK,
-  Shopee, TikTok Shop. The remaining providers Section 8 lists (Lazada,
-  ViettelPost, MISA meInvoice, Viettel S-Invoice, VNPT Invoice,
-  Booking.com, Agoda, national-free-platform) are scaffolded stubs, not
-  fabricated integrations — see `stub-connectors.ts`.
+  Shopee, TikTok Shop, Lazada — closing out all 3 documented marketplace
+  connectors. The remaining providers Section 8 lists (ViettelPost, MISA
+  meInvoice, Viettel S-Invoice, VNPT Invoice, Booking.com, Agoda,
+  national-free-platform) are scaffolded stubs, not fabricated
+  integrations — see `stub-connectors.ts`.
 - `services/agent-orchestrator` — a THIRD separate deployable: a real
   Temporal worker (`pnpm worker`, plain script, not NestJS) + a thin
   NestJS HTTP client (`pnpm dev`, starts/signals/queries conversations as

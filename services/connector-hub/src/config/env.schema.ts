@@ -41,6 +41,7 @@ export const envSchema = z
     GHTK_API_BASE_URL: z.string().default('https://services.giaohangtietkiem.vn'),
     SHOPEE_API_BASE_URL: z.string().default('https://partner.shopeemobile.com'),
     TIKTOK_SHOP_API_BASE_URL: z.string().default('https://open-api.tiktokglobalshop.com'),
+    LAZADA_API_BASE_URL: z.string().default('https://api.lazada.vn/rest'),
 
     // Service-to-service forwarding — SepayWebhookController calling
     // backend-api's POST /internal/payments/by-invoice-number. Same shared

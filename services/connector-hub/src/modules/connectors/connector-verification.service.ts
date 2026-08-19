@@ -6,8 +6,8 @@ import { GhnAdapter } from './ghn/ghn.adapter';
 import { GhtkAdapter } from './ghtk/ghtk.adapter';
 import { ShopeeAdapter } from './shopee/shopee.adapter';
 import { TiktokShopAdapter } from './tiktok-shop/tiktok-shop.adapter';
+import { LazadaAdapter } from './lazada/lazada.adapter';
 import {
-  LazadaAdapter,
   ViettelpostAdapter,
   MisaMeinvoiceAdapter,
   ViettelSinvoiceAdapter,

@@ -983,3 +983,32 @@ restarted cleanly after the Postgres image swap. Not yet run: the actual
 ingestion script and a live semantic search, both blocked on a real
 `VOYAGE_API_KEY` — same "let key, I will input later" state as every other
 placeholder credential in this repo.
+
+## Lazada — 6th connector, closes the marketplace trio
+
+Picked as the next module after Layer B RAG shipped: same proven
+HMAC-signing family as `shopee.adapter.ts`/`tiktok-shop.adapter.ts` (a
+third data point, not a new risk category), and it's a cleaner milestone
+than an arbitrary Nth pick — all 3 documented marketplace connectors
+(Shopee, TikTok Shop, Lazada) are now real. Considered ViettelPost instead
+(would close the shipping trio the same way), but Lazada was lower-risk:
+ViettelPost's real API leans on numeric province/district/ward lookup
+codes that would need to be fabricated to build a `createShippingOrder`-
+style method, the same "confidently-wrong code without a way to verify
+it" risk category e-invoice/Booking.com were already passed over for.
+Lazada's Open Platform API needs no such lookup-table data — HMAC-signed
+REST, same shape as its two siblings.
+
+Two real differences from Shopee/TikTok Shop's signing, not shortcuts:
+Lazada signs with UPPERCASE hex (not lowercase), and its params include
+`sign_method`/millisecond (not second) timestamps. `lazada.adapter.ts`'s
+`getSellerInfo`/`getOrderList` mirror the other two marketplace adapters'
+method shapes (`getShopInfo`/`getOrderList`) for consistency across all
+three. NOT live-verified against a real Lazada seller account — same
+disclaimer as every other connector here, confirm against Lazada's
+sandbox once real credentials are entered.
+
+Verified: typecheck clean, connector-hub e2e suite green (12/12
+unchanged — no adapter here gets a live-hitting e2e test, same precedent
+as GHTK/Shopee/TikTok Shop), dev server hot-reloaded cleanly
+(`LazadaModule dependencies initialized`).
