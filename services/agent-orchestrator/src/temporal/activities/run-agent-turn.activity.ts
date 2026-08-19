@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { ApplicationFailure } from '@temporalio/common';
 import { wrapUntrustedContent } from '../../platform/prompt-injection';
 import { getSalesSummary, getSalesSummaryToolSchema, GET_SALES_SUMMARY_TOOL_NAME } from './tools/get-sales-summary.tool';
+import { getStockLevel, getStockLevelToolSchema, GET_STOCK_LEVEL_TOOL_NAME } from './tools/get-stock-level.tool';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -25,6 +26,31 @@ const SYSTEM_PROMPT = [
 ].join(' ');
 
 const MAX_TOOL_ITERATIONS = 3;
+
+/**
+ * A small registry, not a growing if/else chain — the second tool
+ * (`get_stock_level`) is what earned this; a third would have made the
+ * if/else genuinely unreadable. `tenantId` is threaded in by this
+ * Activity, never taken from `rawInput` (the model's own tool-call
+ * arguments) — every handler's exposed JSON schema (see each tool file)
+ * omits `tenantId` entirely, so there is no argument name the model could
+ * even attempt to smuggle a different tenant through.
+ */
+const TOOLS: Record<string, { schema: Anthropic.Tool; handler: (tenantId: string, rawInput: unknown) => Promise<unknown> }> = {
+  [GET_SALES_SUMMARY_TOOL_NAME]: {
+    schema: getSalesSummaryToolSchema,
+    handler: async (tenantId) => getSalesSummary({ tenantId }),
+  },
+  [GET_STOCK_LEVEL_TOOL_NAME]: {
+    schema: getStockLevelToolSchema,
+    handler: async (tenantId, rawInput) => {
+      const { skuCode } = rawInput as { skuCode: string };
+      return getStockLevel({ tenantId, skuCode });
+    },
+  },
+};
+
+const TOOL_SCHEMAS = Object.values(TOOLS).map((t) => t.schema);
 
 /**
  * Found by actually running this against Anthropic's real endpoint with an
@@ -79,7 +105,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     model,
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
-    tools: [getSalesSummaryToolSchema],
+    tools: TOOL_SCHEMAS,
     messages,
   });
 
@@ -90,18 +116,23 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
     for (const block of toolUseBlocks) {
-      if (block.name === GET_SALES_SUMMARY_TOOL_NAME) {
-        const result = await getSalesSummary({ tenantId: input.tenantId });
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
-      } else {
+      const tool = TOOLS[block.name];
+      if (!tool) {
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Unknown tool "${block.name}".`, is_error: true });
+        continue;
+      }
+      try {
+        const result = await tool.handler(input.tenantId, block.input);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
+      } catch (err) {
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Tool error: ${err instanceof Error ? err.message : String(err)}`, is_error: true });
       }
     }
 
     messages.push({ role: 'assistant', content: response.content });
     messages.push({ role: 'user', content: toolResults });
 
-    response = await createMessage(client, { model, max_tokens: 1024, system: SYSTEM_PROMPT, tools: [getSalesSummaryToolSchema], messages });
+    response = await createMessage(client, { model, max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOL_SCHEMAS, messages });
   }
 
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');

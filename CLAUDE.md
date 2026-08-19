@@ -646,17 +646,20 @@ stack exists because this directory does.
 
 `solodesk_agent` (own migration, own NOSUPERUSER/NOBYPASSRLS provisioning,
 same pattern as the other two services) is GRANTed SELECT — and ONLY
-SELECT — on exactly the tables a Layer A tool needs
-(`identity.tenants`, `sales.orders` so far), nothing else, no
-INSERT/UPDATE/DELETE anywhere. This is a genuinely different security
-boundary from connector-hub's (which must NEVER read backend-api's
-business tables at all): agent-orchestrator's whole job is ANSWERING
-QUESTIONS about that data (docs Section 5.1's Layer A — "the household's
-own data ... executed directly against Postgres with `app.tenant_id` set
-so RLS enforces automatically"), so read access is the point, not a leak.
+SELECT — on exactly the tables a Layer A tool needs, one migration per
+tool that introduced a new one (`0001`: `identity.tenants`/`sales.orders`
+for `get_sales_summary`; `0002`: `catalog.skus`/`catalog.lots` for
+`get_stock_level`), nothing else, no INSERT/UPDATE/DELETE anywhere ever.
+This is a genuinely different security boundary from connector-hub's
+(which must NEVER read backend-api's business tables at all):
+agent-orchestrator's whole job is ANSWERING QUESTIONS about that data
+(docs Section 5.1's Layer A — "the household's own data ... executed
+directly against Postgres with `app.tenant_id` set so RLS enforces
+automatically"), so read access is the point, not a leak.
 `test/role-isolation.e2e-spec.ts` proves both halves for real: CAN read
-`sales.orders`, CANNOT write to it, CANNOT read tables it wasn't
-explicitly GRANTed on (`catalog.skus`, connector-hub's `vault.credentials`).
+`sales.orders`/`catalog.skus`/`catalog.lots`, CANNOT write to any of them,
+CANNOT read a table it wasn't explicitly GRANTed on (`tax.invoices`,
+connector-hub's `vault.credentials`).
 
 **Cross-service migration ordering is a REAL, load-bearing dependency
 here** (unlike connector-hub, which has zero schema coupling to
@@ -704,6 +707,23 @@ through), `tenantId` never comes from the model or the tool call, always
 from the workflow's own argument chain back to the caller's JWT, and there
 is no free-form SQL generation anywhere in this service (Layer A never
 will have one, by the docs' own design).
+
+## Second tool (`get_stock_level`) — a tool REGISTRY, not a growing if/else
+
+`get_stock_level` (current available quantity for a SKU code, `catalog.skus`
+joined to `catalog.lots`) is the first tool with a CALLER-SUPPLIED
+argument — `get_sales_summary` takes none. `skuCode` is the only thing the
+model may specify; `tenantId` is still never part of the exposed JSON
+schema and never taken from the model's tool-call arguments, same
+discipline as the first tool. Two tools is what earned
+`run-agent-turn.activity.ts`'s `TOOLS` registry (`Record<name, {schema,
+handler}>`) replacing what would have become an if/else chain — a third
+tool would have made that chain genuinely unreadable; refactoring at two,
+not one, matches this codebase's general "don't abstract until a real
+second case shows up" discipline. `test/get-stock-level.e2e-spec.ts`
+covers the case that matters most for a multi-tenant lookup keyed by a
+caller-supplied code rather than an id: the SAME sku_code existing in two
+different tenants must resolve independently per tenant, never cross-match.
 
 ## A real bug found by actually running this against Anthropic's live API (not by reading the code)
 
