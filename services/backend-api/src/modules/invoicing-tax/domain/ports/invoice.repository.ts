@@ -1,5 +1,5 @@
 import type { Db } from '../../../../db/client';
-import type { Invoice } from '../invoice.types';
+import type { Invoice, InvoiceStatus } from '../invoice.types';
 
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 
@@ -23,4 +23,5 @@ export interface IInvoiceRepository {
   sumIssuedSubtotalSince(tenantId: string, since: Date): Promise<string>;
   /** Assigns the next per-tenant invoice number and inserts — `tx` MUST be the same transaction as the caller's `withIdempotency` key-insert (see `InvoiceService.issueInvoice`). */
   create(tenantId: string, input: CreateInvoiceInput, tx: Db): Promise<Invoice>;
+  updateStatus(id: string, tenantId: string, status: InvoiceStatus, tx?: Db): Promise<void>;
 }

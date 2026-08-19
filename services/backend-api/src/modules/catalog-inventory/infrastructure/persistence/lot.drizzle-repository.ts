@@ -181,6 +181,29 @@ export class LotDrizzleRepository implements ILotRepository {
   }
 
   /**
+   * Credits stock back for a return — same "single statement + stock_movements
+   * insert in the same call" shape as `receive`, no guard: crediting stock
+   * back can never oversell, unlike `reserve`/`consumeDirect`.
+   */
+  async creditReturn(lotId: string, tenantId: string, qty: string, referenceId?: string, outerTx?: Db): Promise<void> {
+    return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
+      await tx
+        .update(lots)
+        .set({ quantityOnHand: sql`${lots.quantityOnHand} + ${qty}::numeric`, updatedAt: new Date() })
+        .where(and(eq(lots.id, lotId), eq(lots.tenantId, tenantId)));
+
+      await tx.insert(stockMovements).values({
+        tenantId,
+        lotId,
+        movementType: 'return',
+        quantity: qty,
+        referenceType: referenceId ? 'order' : null,
+        referenceId: referenceId ?? null,
+      });
+    });
+  }
+
+  /**
    * The single atomic operation every mutating method above composes:
    * `UPDATE lots SET <patch> WHERE id = ? AND tenant_id = ? AND <guard>
    * RETURNING *`. Postgres's row lock on the matched row is what makes this

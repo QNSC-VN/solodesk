@@ -10,7 +10,7 @@ import { PaymentResponseDto } from './payment.dto';
 import type { Payment } from '../domain/payment.types';
 
 function toDto(p: Payment): PaymentResponseDto {
-  return { id: p.id, invoiceId: p.invoiceId, method: p.method, amount: p.amount, referenceCode: p.referenceCode, receivedAt: p.receivedAt };
+  return { id: p.id, invoiceId: p.invoiceId, method: p.method, amount: p.amount, type: p.type, referenceCode: p.referenceCode, receivedAt: p.receivedAt };
 }
 
 /**

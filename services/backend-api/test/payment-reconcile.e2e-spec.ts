@@ -97,6 +97,20 @@ describe('Payment reconciliation — real Postgres, no mocks', () => {
     ).rejects.toThrow();
   });
 
+  it('rejects a payment with a zero or negative amount', async () => {
+    const { tenantId, invoice } = await seedInvoice('Payment Test Tenant Negative', '100000.00');
+
+    await expect(
+      runWithTenant(tenantId, () => paymentService.recordPayment(tenantId, { invoiceId: invoice.id, method: 'cash', amount: '0.00' })),
+    ).rejects.toThrow();
+    await expect(
+      runWithTenant(tenantId, () => paymentService.recordPayment(tenantId, { invoiceId: invoice.id, method: 'cash', amount: '-50000.00' })),
+    ).rejects.toThrow();
+
+    const summary = await runWithTenant(tenantId, () => paymentService.getPaymentSummary(invoice.id, tenantId));
+    expect(summary.paidAmount).toBe('0'); // neither attempt was recorded — sumByInvoice's COALESCE fallback, no rows to sum
+  });
+
   it('rejects a second payment reusing the same reference code (dedup, docs Section 7)', async () => {
     const { tenantId, invoice } = await seedInvoice('Payment Test Tenant Dedup', '200000.00');
 

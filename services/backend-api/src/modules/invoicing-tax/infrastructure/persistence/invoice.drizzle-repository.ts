@@ -3,9 +3,9 @@ import { eq, and, gte, sql } from 'drizzle-orm';
 import { db, type Db } from '../../../../db/client';
 import { invoices } from '../../../../db/schema/invoices';
 import { invoiceSequences } from '../../../../db/schema/invoice-sequences';
-import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { withTenantTransaction, withTenantTransactionOrReuse } from '../../../../platform/tenant-context';
 import type { IInvoiceRepository, CreateInvoiceInput } from '../../domain/ports/invoice.repository';
-import type { Invoice } from '../../domain/invoice.types';
+import type { Invoice, InvoiceStatus } from '../../domain/invoice.types';
 
 function toDomain(row: typeof invoices.$inferSelect): Invoice {
   return {
@@ -117,5 +117,11 @@ export class InvoiceDrizzleRepository implements IInvoiceRepository {
       })
       .returning();
     return toDomain(rows[0]!);
+  }
+
+  async updateStatus(id: string, tenantId: string, status: InvoiceStatus, outerTx?: Db): Promise<void> {
+    return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
+      await tx.update(invoices).set({ status }).where(and(eq(invoices.id, id), eq(invoices.tenantId, tenantId)));
+    });
   }
 }

@@ -11,6 +11,8 @@ import { InternalServiceGuard } from '../../platform/internal-service.guard';
   imports: [InvoicingTaxModule], // needs InvoiceService for invoice lookup/total — see PaymentService
   controllers: [PaymentController, InternalPaymentController],
   providers: [PaymentService, InternalServiceGuard, { provide: PAYMENT_REPOSITORY, useClass: PaymentDrizzleRepository }],
-  exports: [PaymentService],
+  // PAYMENT_REPOSITORY exported too: returns needs IPaymentRepository
+  // directly, same reason ORDER_REPOSITORY/INVOICE_REPOSITORY are exported.
+  exports: [PaymentService, PAYMENT_REPOSITORY],
 })
 export class PaymentReconcileModule {}

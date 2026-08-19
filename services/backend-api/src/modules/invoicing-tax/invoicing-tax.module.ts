@@ -26,6 +26,8 @@ import { INVOICE_REPOSITORY } from './domain/ports/invoice.repository';
     { provide: TAX_RULE_REPOSITORY, useClass: TaxRuleDrizzleRepository },
     { provide: INVOICE_REPOSITORY, useClass: InvoiceDrizzleRepository },
   ],
-  exports: [InvoiceService, InvoicePdfService],
+  // INVOICE_REPOSITORY exported too: returns needs IInvoiceRepository
+  // directly, same reason ORDER_REPOSITORY/PAYMENT_REPOSITORY are exported.
+  exports: [InvoiceService, InvoicePdfService, INVOICE_REPOSITORY],
 })
 export class InvoicingTaxModule {}

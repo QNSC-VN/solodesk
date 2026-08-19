@@ -23,6 +23,7 @@ export class PaymentResponseDto {
   @ApiProperty() invoiceId!: string;
   @ApiProperty() method!: string;
   @ApiProperty() amount!: string;
+  @ApiProperty({ enum: ['payment', 'refund'] }) type!: string;
   @ApiProperty({ nullable: true }) referenceCode!: string | null;
   @ApiProperty() receivedAt!: Date;
 }

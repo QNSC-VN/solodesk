@@ -2,7 +2,7 @@ import { pgSchema, uuid, text, numeric, timestamp } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants';
 
 export type OrderChannel = 'counter' | 'shopee' | 'tiktok_shop' | 'lazada' | 'phone' | 'other';
-export type OrderStatus = 'confirmed' | 'cancelled';
+export type OrderStatus = 'confirmed' | 'cancelled' | 'returned';
 
 export const salesSchema = pgSchema('sales');
 

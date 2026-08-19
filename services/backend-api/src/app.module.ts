@@ -15,6 +15,7 @@ import { BookingResourceModule } from './modules/booking-resource/booking-resour
 import { ProcurementModule } from './modules/procurement/procurement.module';
 import { TraceabilityModule } from './modules/traceability/traceability.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReturnsModule } from './modules/returns/returns.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ProcurementModule,
     TraceabilityModule,
     NotificationsModule,
+    ReturnsModule,
   ],
   providers: [
     // Global — tenant scoping is not a per-route opt-in (Section 4.1).

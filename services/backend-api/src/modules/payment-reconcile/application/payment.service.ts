@@ -26,6 +26,10 @@ export class PaymentService {
   async recordPayment(tenantId: string, input: CreatePaymentInput): Promise<Payment> {
     assertTenantMatchesSession(tenantId);
 
+    if (compareMoney(input.amount, '0') <= 0) {
+      throw new ConflictException('INVALID_AMOUNT', `Payment amount must be positive, got ${input.amount}.`);
+    }
+
     const invoice = await this.invoiceService.getInvoice(input.invoiceId, tenantId);
     if (invoice.status === 'cancelled') {
       throw new ConflictException('INVOICE_CANCELLED', `Invoice ${input.invoiceId} is cancelled, cannot record a payment against it.`);

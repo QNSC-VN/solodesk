@@ -3,7 +3,7 @@ import { catalogSchema } from './skus';
 import { tenants } from './tenants';
 import { lots } from './lots';
 
-export type StockMovementType = 'receipt' | 'consumption' | 'adjustment' | 'reservation' | 'release';
+export type StockMovementType = 'receipt' | 'consumption' | 'adjustment' | 'reservation' | 'release' | 'return';
 
 /**
  * Append-only audit trail of every stock change — the "ai sửa gì" ledger

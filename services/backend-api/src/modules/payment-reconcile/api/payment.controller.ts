@@ -11,6 +11,7 @@ function toDto(p: Payment): PaymentResponseDto {
     invoiceId: p.invoiceId,
     method: p.method,
     amount: p.amount,
+    type: p.type,
     referenceCode: p.referenceCode,
     receivedAt: p.receivedAt,
   };

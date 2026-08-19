@@ -3,6 +3,7 @@ import { tenants } from './tenants';
 import { invoices } from './invoices';
 
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'qr' | 'marketplace_settlement';
+export type PaymentType = 'payment' | 'refund';
 
 export const paymentsSchema = pgSchema('payments');
 
@@ -18,6 +19,10 @@ export const payments = paymentsSchema.table('payments', {
   invoiceId: uuid('invoice_id').notNull().references(() => invoices.id),
   method: text('method').$type<PaymentMethod>().notNull(),
   amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+  // A refund from a return (sales.returns) — nets against 'payment' rows
+  // in PaymentService.getPaymentSummary so a returned/cancelled invoice's
+  // derived isFullyPaid stays correct.
+  type: text('type').$type<PaymentType>().notNull().default('payment'),
   referenceCode: text('reference_code'),
   receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

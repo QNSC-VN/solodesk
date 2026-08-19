@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { eq, and, sql } from 'drizzle-orm';
-import { db } from '../../../../db/client';
+import { db, type Db } from '../../../../db/client';
 import { payments } from '../../../../db/schema/payments';
-import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { withTenantTransaction, withTenantTransactionOrReuse } from '../../../../platform/tenant-context';
 import type { IPaymentRepository } from '../../domain/ports/payment.repository';
 import type { Payment, CreatePaymentInput } from '../../domain/payment.types';
 
@@ -13,6 +13,7 @@ function toDomain(row: typeof payments.$inferSelect): Payment {
     invoiceId: row.invoiceId,
     method: row.method,
     amount: row.amount,
+    type: row.type,
     referenceCode: row.referenceCode,
     receivedAt: row.receivedAt,
   };
@@ -38,25 +39,29 @@ export class PaymentDrizzleRepository implements IPaymentRepository {
     });
   }
 
+  /** Net of refunds: `SUM(amount) WHERE type='payment' - SUM(amount) WHERE type='refund'`, not a plain sum. */
   async sumByInvoice(invoiceId: string, tenantId: string): Promise<string> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const rows = await tx
-        .select({ total: sql<string>`COALESCE(SUM(${payments.amount}), 0)` })
+        .select({
+          total: sql<string>`COALESCE(SUM(CASE WHEN ${payments.type} = 'refund' THEN -${payments.amount} ELSE ${payments.amount} END), 0)`,
+        })
         .from(payments)
         .where(and(eq(payments.invoiceId, invoiceId), eq(payments.tenantId, tenantId)));
       return rows[0]!.total;
     });
   }
 
-  async create(tenantId: string, input: CreatePaymentInput): Promise<Payment> {
-    return withTenantTransaction(db, tenantId, async (tx) => {
-      const rows = await tx
+  async create(tenantId: string, input: CreatePaymentInput, tx?: Db): Promise<Payment> {
+    return withTenantTransactionOrReuse(db, tenantId, tx, async (innerTx) => {
+      const rows = await innerTx
         .insert(payments)
         .values({
           tenantId,
           invoiceId: input.invoiceId,
           method: input.method,
           amount: input.amount,
+          type: input.type ?? 'payment',
           referenceCode: input.referenceCode ?? null,
         })
         .returning();

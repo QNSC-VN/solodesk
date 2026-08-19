@@ -3,10 +3,10 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { db, type Db } from '../../../../db/client';
 import { orders } from '../../../../db/schema/orders';
 import { orderLines } from '../../../../db/schema/order-lines';
-import { withTenantTransaction } from '../../../../platform/tenant-context';
+import { withTenantTransaction, withTenantTransactionOrReuse } from '../../../../platform/tenant-context';
 import { sumMoney } from '../../../../platform/money';
 import type { IOrderRepository, ResolvedOrderLine } from '../../domain/ports/order.repository';
-import type { Order, CreateOrderInput } from '../../domain/order.types';
+import type { Order, CreateOrderInput, OrderStatus } from '../../domain/order.types';
 
 function toOrder(order: typeof orders.$inferSelect, lineRows: (typeof orderLines.$inferSelect)[]): Order {
   return {
@@ -96,5 +96,11 @@ export class OrderDrizzleRepository implements IOrderRepository {
 
     const full = await loadOrder(tx, order.id, tenantId);
     return full!;
+  }
+
+  async updateStatus(id: string, tenantId: string, status: OrderStatus, outerTx?: Db): Promise<void> {
+    return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
+      await tx.update(orders).set({ status }).where(and(eq(orders.id, id), eq(orders.tenantId, tenantId)));
+    });
   }
 }

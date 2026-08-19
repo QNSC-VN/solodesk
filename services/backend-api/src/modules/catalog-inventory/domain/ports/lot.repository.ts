@@ -37,4 +37,6 @@ export interface ILotRepository {
   consumeReserved(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;
   /** Immediate sale with no prior reservation (counter sale, single channel). */
   consumeDirect(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;
+  /** Credits stock back for a return — no guard needed, crediting back can never oversell. */
+  creditReturn(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<void>;
 }

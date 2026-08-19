@@ -1,5 +1,5 @@
 import type { Db } from '../../../../db/client';
-import type { Order, CreateOrderInput } from '../order.types';
+import type { Order, CreateOrderInput, OrderStatus } from '../order.types';
 
 export const ORDER_REPOSITORY = Symbol('ORDER_REPOSITORY');
 
@@ -28,4 +28,5 @@ export interface IOrderRepository {
     lines: ResolvedOrderLine[],
     tx: Db,
   ): Promise<Order>;
+  updateStatus(id: string, tenantId: string, status: OrderStatus, tx?: Db): Promise<void>;
 }

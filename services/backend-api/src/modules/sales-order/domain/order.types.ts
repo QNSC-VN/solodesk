@@ -1,5 +1,5 @@
 export type OrderChannel = 'counter' | 'shopee' | 'tiktok_shop' | 'lazada' | 'phone' | 'other';
-export type OrderStatus = 'confirmed' | 'cancelled';
+export type OrderStatus = 'confirmed' | 'cancelled' | 'returned';
 
 export interface OrderLine {
   id: string;
