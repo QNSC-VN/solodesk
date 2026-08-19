@@ -13,6 +13,23 @@ export type ConnectorProvider =
   | 'agoda'
   | 'national_free_platform';
 
+/** Single source of truth for valid providers — both `VaultController` and `ConnectorVerificationController` validate against this so the two can never silently drift apart. */
+export const CONNECTOR_PROVIDERS: readonly ConnectorProvider[] = [
+  'sepay',
+  'ghn',
+  'shopee',
+  'tiktok_shop',
+  'lazada',
+  'ghtk',
+  'viettelpost',
+  'misa_meinvoice',
+  'viettel_sinvoice',
+  'vnpt_invoice',
+  'booking_com',
+  'agoda',
+  'national_free_platform',
+];
+
 /** Arbitrary provider-specific fields — API key/secret, shop id, account number, whatever that provider's adapter needs. Never logged, never returned by any endpoint. */
 export type CredentialPayload = Record<string, string>;
 

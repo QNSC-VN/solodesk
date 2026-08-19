@@ -29,13 +29,16 @@ export interface TiktokShopOrder {
  * simple key/token or HMAC-signed REST call — the same "confidently-wrong
  * code without a way to verify it" risk the e-invoice providers were passed
  * over for. TikTok Shop's signing scheme is HMAC-SHA256 wrapped with the
- * app secret on both ends of the string (path + sorted query params +
- * JSON body), the same family of scheme as `shopee.adapter.ts`'s already-
- * working HMAC pattern — proven shape, not a new risk category. NOT yet
- * verified against a live TikTok Shop partner account; field names and the
- * signing algorithm match TikTok's public Partner Center docs as accurately
- * as I can from training knowledge — confirm against TikTok's sandbox once
- * real credentials are entered via `POST /v1/vault/tiktok_shop/credentials`.
+ * app secret on both ends of the string, the same family of scheme as
+ * `shopee.adapter.ts`'s already-working HMAC pattern — proven shape, not a
+ * new risk category. Both methods below are GET (path + sorted query
+ * params only) — a POST call's JSON-body signing isn't wired in yet
+ * (YAGNI until a real POST endpoint, e.g. order creation, is added). NOT
+ * yet verified against a live TikTok Shop partner account; field names and
+ * the signing algorithm match TikTok's public Partner Center docs as
+ * accurately as I can from training knowledge — confirm against TikTok's
+ * sandbox once real credentials are entered via `POST
+ * /v1/vault/tiktok_shop/credentials`.
  */
 @Injectable()
 export class TiktokShopAdapter implements IConnectorAdapter {
@@ -46,15 +49,15 @@ export class TiktokShopAdapter implements IConnectorAdapter {
     this.baseUrl = config.get('TIKTOK_SHOP_API_BASE_URL', { infer: true })!;
   }
 
-  private sign(credentials: TiktokShopCredentials, path: string, params: Record<string, string>, body?: string): string {
+  private sign(credentials: TiktokShopCredentials, path: string, params: Record<string, string>): string {
     const sortedKeys = Object.keys(params).sort();
     const paramString = sortedKeys.map((k) => `${k}${params[k]}`).join('');
-    const base = `${path}${paramString}${body ?? ''}`;
+    const base = `${path}${paramString}`;
     const wrapped = `${credentials.appSecret}${base}${credentials.appSecret}`;
     return createHmac('sha256', credentials.appSecret).update(wrapped).digest('hex');
   }
 
-  private signedUrl(credentials: TiktokShopCredentials, path: string, extraParams: Record<string, string> = {}, body?: string): string {
+  private signedUrl(credentials: TiktokShopCredentials, path: string, extraParams: Record<string, string> = {}): string {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const params: Record<string, string> = {
       app_key: credentials.appKey,
@@ -63,7 +66,7 @@ export class TiktokShopAdapter implements IConnectorAdapter {
       timestamp,
       ...extraParams,
     };
-    const sign = this.sign(credentials, path, params, body);
+    const sign = this.sign(credentials, path, params);
     const url = new URL(`${this.baseUrl}${path}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     url.searchParams.set('sign', sign);

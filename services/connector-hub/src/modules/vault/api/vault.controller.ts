@@ -3,26 +3,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { getCurrentTenantId } from '../../../platform/tenant-context';
 import { VaultService } from '../application/vault.service';
 import { SetCredentialsDto, StoredCredentialResponseDto } from './vault.dto';
-import type { ConnectorProvider, StoredCredential } from '../domain/vault.types';
-
-const CONNECTOR_PROVIDERS: readonly string[] = [
-  'sepay',
-  'ghn',
-  'shopee',
-  'tiktok_shop',
-  'lazada',
-  'ghtk',
-  'viettelpost',
-  'misa_meinvoice',
-  'viettel_sinvoice',
-  'vnpt_invoice',
-  'booking_com',
-  'agoda',
-  'national_free_platform',
-];
+import { CONNECTOR_PROVIDERS, type ConnectorProvider, type StoredCredential } from '../domain/vault.types';
 
 function parseProvider(value: string): ConnectorProvider {
-  if (!CONNECTOR_PROVIDERS.includes(value)) {
+  if (!(CONNECTOR_PROVIDERS as readonly string[]).includes(value)) {
     throw new BadRequestException(`Unknown provider "${value}". Must be one of: ${CONNECTOR_PROVIDERS.join(', ')}.`);
   }
   return value as ConnectorProvider;

@@ -25,7 +25,11 @@ export function getConnectorPolicy(provider: string): IPolicy {
       halfOpenAfter: 30_000,
       breaker: new ConsecutiveBreaker(5),
     });
-    policy = wrap(retryPolicy, breakerPolicy);
+    // Breaker OUTER, retry INNER — `wrap(a, b)` runs `a.execute(() => b.execute(fn))`,
+    // so the breaker must be `a` to observe one outcome per logical call. The
+    // reverse order let the breaker count every individual retry attempt as its
+    // own failure, tripping ConsecutiveBreaker(5) after ~2 failed calls instead of 5.
+    policy = wrap(breakerPolicy, retryPolicy);
     policies.set(provider, policy);
   }
   return policy;
