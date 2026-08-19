@@ -189,6 +189,35 @@ Section 17.2).
   bridges that vocabulary once, in one place — don't add a second `tenantId`
   field anywhere upstream of it.
 
+## `catalog-inventory` — the reference pattern for race-safe stock mutation
+
+Second real module, same hexagonal skeleton as `identity-tenant`. Its
+contribution is `LotDrizzleRepository`'s `atomicUpdate` — copy this pattern
+for any future module mutating a quantity/balance/counter under concurrency
+(booking capacity, cash-drawer balance, ...):
+
+- Every mutation is one `UPDATE ... WHERE id = ? AND tenant_id = ? AND
+  <guard> RETURNING *`, guard and patch computed in SQL (`quantity_on_hand -
+  quantity_reserved >= qty`), never read-then-write from application code.
+  Postgres's row lock on the matched row serializes concurrent callers; the
+  loser's guard re-evaluates against the winner's already-committed change.
+  No version column, no optimistic-lock retry loop needed — verified by
+  `test/inventory-race.e2e-spec.ts` firing 20 real concurrent
+  `consumeDirect` calls against 10 available units: exactly 10 succeed,
+  10 see insufficient stock, the balance never goes negative.
+- A failed guard returns `null` from the repository, not an exception — the
+  application-layer service (`InventoryService`) decides that's a
+  `ConflictException`, keeping the repository's contract to "this DB
+  operation either happened or didn't," not "this business rule was violated."
+- Postgres `numeric` is exact decimal — no epsilon comparison needed in a
+  guard, unlike a floating-point balance. Don't add one "to be safe"; it's
+  dead code that suggests a problem that doesn't exist here.
+- `InventoryService.sellFromSku`'s scope limit is stated in its own comment,
+  not hidden: it only consumes from the single oldest available lot. A sale
+  needing to split across multiple lots atomically is out of scope until a
+  real need for it shows up (YAGNI) — the caller can drive `consumeDirect`
+  per lot itself meanwhile.
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**

@@ -6,12 +6,14 @@ import { TenantContextInterceptor } from './platform/tenant-context.interceptor'
 import { RequestContextMiddleware } from './platform/request-context.middleware';
 import { AuthModule } from './platform/auth/auth.module';
 import { IdentityTenantModule } from './modules/identity-tenant/identity-tenant.module';
+import { CatalogInventoryModule } from './modules/catalog-inventory/catalog-inventory.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     AuthModule,
     IdentityTenantModule,
+    CatalogInventoryModule,
   ],
   providers: [
     // Global — tenant scoping is not a per-route opt-in (Section 4.1).

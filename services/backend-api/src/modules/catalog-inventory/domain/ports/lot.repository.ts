@@ -1,0 +1,32 @@
+import type { Lot, ReceiveLotInput, AvailableQuantity } from '../inventory.types';
+
+export const LOT_REPOSITORY = Symbol('LOT_REPOSITORY');
+
+/**
+ * Every mutating method here MUST be a single atomic `UPDATE ... WHERE
+ * <guard> RETURNING *` — never a read-then-write from application code.
+ * Postgres serializes concurrent UPDATEs on the same row via its row lock,
+ * so the second of two concurrent callers re-evaluates the WHERE guard
+ * against the first caller's already-applied change — this is what actually
+ * prevents "hai đơn cùng tiêu lô cuối" (Mục 11), not a version column + retry
+ * loop, which would be equivalent but more code for no extra safety here.
+ *
+ * A method returns `null` when the guard fails (insufficient available/
+ * reserved quantity) — the caller decides whether that's a 409 Conflict.
+ */
+export interface ILotRepository {
+  findById(id: string, tenantId: string): Promise<Lot | null>;
+  /** Lots with available quantity > 0 for one SKU, oldest `receivedAt` first (FIFO consumption order). */
+  listAvailableBySku(skuId: string, tenantId: string): Promise<Lot[]>;
+  getAvailableQuantity(skuId: string, tenantId: string): Promise<AvailableQuantity>;
+  receive(tenantId: string, input: ReceiveLotInput, createdBy?: string): Promise<Lot>;
+
+  /** Holds `qty` against a lot for a pending order without deducting stock yet. */
+  reserve(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  /** Releases a hold — order cancelled/expired before consumption. */
+  release(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  /** Confirms a previously reserved amount as actually shipped/sold. */
+  consumeReserved(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+  /** Immediate sale with no prior reservation (counter sale, single channel). */
+  consumeDirect(lotId: string, tenantId: string, qty: string, referenceId?: string): Promise<Lot | null>;
+}
