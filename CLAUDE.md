@@ -295,6 +295,39 @@ just calls `OrderService.getOrder`/`TenantService.getTenant` normally.
   `CatalogService.createSku`'s SKU-code check — the DB constraint is the
   real backstop, the app check is the fast path.
 
+## `payment-reconcile` — derived summary, not a stored status column
+
+Fifth module. Depends on `InvoicingTaxModule`'s exported `InvoiceService`
+only (invoice lookup + total), same module-boundary discipline as
+`invoicing-tax` depending on `OrderService`/`TenantService` rather than
+reaching into another schema directly.
+
+- **`getPaymentSummary` sums `payments.payments` and compares to
+  `invoice.totalAmount` on every call — no `isFullyPaid`/status column
+  anywhere.** A stored status is one more place a bug can let the truth
+  (the payments actually recorded) drift from what's displayed. Section
+  20.5's CQRS-lite already made this call for the read/write split in
+  general; this is the same call applied to one derived boolean.
+- **`reference_code` is a partial unique index
+  (`WHERE reference_code IS NOT NULL`), not a plain unique column** — cash
+  payments legitimately have no reference and must not collide with each
+  other via a shared `NULL`. This is docs Section 7's inbound-webhook dedup
+  guidance ("unique index on `provider_event_id`") adapted to payments: a
+  retried bank/QR webhook relay from `connector-hub` (once it exists) hits
+  this and gets rejected with `DUPLICATE_PAYMENT_REFERENCE` instead of
+  double-recording revenue.
+- **Overpayment is rejected, not clamped or silently accepted** — recording
+  a payment that would push `paidAmount` over `invoice.totalAmount` throws
+  `ConflictException('OVERPAYMENT', ...)`. Chosen because household-business
+  cash sales are exact-amount transactions in this program's flow; if a real
+  need for partial refunds/change-tracking shows up, that's a new explicit
+  feature, not a silent clamp here.
+- Actual SePay/bank webhook receipt, credential vaulting, and retry/backoff
+  live in `connector-hub` (Section 5.4) — doesn't exist yet. This module is
+  what `connector-hub` will call into once it does; for now, `POST
+  /v1/payments` also serves the real MVP need of staff manually recording a
+  cash payment at the counter.
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**

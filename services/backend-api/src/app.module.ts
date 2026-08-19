@@ -9,6 +9,7 @@ import { IdentityTenantModule } from './modules/identity-tenant/identity-tenant.
 import { CatalogInventoryModule } from './modules/catalog-inventory/catalog-inventory.module';
 import { SalesOrderModule } from './modules/sales-order/sales-order.module';
 import { InvoicingTaxModule } from './modules/invoicing-tax/invoicing-tax.module';
+import { PaymentReconcileModule } from './modules/payment-reconcile/payment-reconcile.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { InvoicingTaxModule } from './modules/invoicing-tax/invoicing-tax.module
     CatalogInventoryModule,
     SalesOrderModule,
     InvoicingTaxModule,
+    PaymentReconcileModule,
   ],
   providers: [
     // Global — tenant scoping is not a per-route opt-in (Section 4.1).

@@ -9,3 +9,4 @@ export * from './order-lines';
 export * from './tax-rules';
 export * from './invoices';
 export * from './invoice-sequences';
+export * from './payments';
