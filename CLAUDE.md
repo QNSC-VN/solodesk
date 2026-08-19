@@ -361,6 +361,42 @@ genuinely cannot fix.
   pattern applies fine there — no aggregate check needed) — only the
   capacity check on `requestHold` needed the advisory lock.
 
+## `procurement` — mirrors `sales-order`, in the other direction
+
+Seventh module. Three aggregates: `Supplier`, `NegotiatedPrice`, `PurchaseNote`
+(+lines). `PurchaseNoteService.recordPurchase` is deliberately the same shape
+as `OrderService.placeOrder` — one `withTenantTransaction`, `withIdempotency`
+inside it, `LOT_REPOSITORY`/`SKU_REPOSITORY` injected directly for
+shared-transaction composition — because procurement genuinely IS
+sales-order's mirror image: buying stock in instead of selling it out.
+
+- **`ILotRepository.receive()` gained an optional trailing `tx` param** (it
+  never needed one before this module) — the same "every mutating
+  repository method takes an optional `tx` last, composes via
+  `withTenantTransactionOrReuse`" convention `sales-order` established, just
+  reaching a method that hadn't needed it yet. Existing call sites
+  (`InventoryService.receiveLot`, every e2e test's seed helper) are
+  unaffected — an added optional parameter, not a signature break.
+- **`negotiated_prices` is per-TENANT versioned config, not per-tenant
+  global reference data like `tax.tax_rules`.** A supplier's negotiated
+  cost is that tenant's own business relationship, so it lives with RLS,
+  unlike the tax-rate table. Same half-open-interval versioning discipline
+  though (`effective_from`/`effective_to`, `effective_to = NULL` = current):
+  `NegotiatedPriceDrizzleRepository.setActive` closes the old active row
+  and inserts the new one in ONE transaction — a partial unique index
+  (`WHERE effective_to IS NULL`) backstops "only one active price per
+  supplier+SKU" at the DB level.
+  `test/procurement.e2e-spec.ts` proves the point that actually matters:
+  repricing a supplier does NOT retroactively change what an
+  already-recorded purchase note snapshotted as its `unit_cost` — same
+  "snapshot at transaction time" discipline as `sales.order_lines.unit_price`
+  and `tax.invoices.tax_rate`.
+- No explicit `unitCost` AND no active negotiated price is a hard
+  `ConflictException('NO_NEGOTIATED_PRICE', ...)`, never a silent zero or a
+  fallback to `sku.unit_price` — that field is the SELLING price; reusing
+  it as a purchase cost would be a real (and wrong) number, not a missing
+  one, which is worse than refusing outright.
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**

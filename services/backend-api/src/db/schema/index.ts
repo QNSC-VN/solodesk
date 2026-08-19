@@ -12,3 +12,7 @@ export * from './invoice-sequences';
 export * from './payments';
 export * from './resources';
 export * from './bookings';
+export * from './suppliers';
+export * from './negotiated-prices';
+export * from './purchase-notes';
+export * from './purchase-note-lines';

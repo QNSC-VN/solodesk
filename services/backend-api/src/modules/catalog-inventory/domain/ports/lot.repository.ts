@@ -25,7 +25,7 @@ export interface ILotRepository {
   /** Lots with available quantity > 0 for one SKU, oldest `receivedAt` first (FIFO consumption order). */
   listAvailableBySku(skuId: string, tenantId: string): Promise<Lot[]>;
   getAvailableQuantity(skuId: string, tenantId: string): Promise<AvailableQuantity>;
-  receive(tenantId: string, input: ReceiveLotInput, createdBy?: string): Promise<Lot>;
+  receive(tenantId: string, input: ReceiveLotInput, createdBy?: string, tx?: Db): Promise<Lot>;
 
   /** Holds `qty` against a lot for a pending order without deducting stock yet. */
   reserve(lotId: string, tenantId: string, qty: string, referenceId?: string, tx?: Db): Promise<Lot | null>;

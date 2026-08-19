@@ -70,8 +70,8 @@ export class LotDrizzleRepository implements ILotRepository {
     });
   }
 
-  async receive(tenantId: string, input: ReceiveLotInput, createdBy?: string): Promise<Lot> {
-    return withTenantTransaction(db, tenantId, async (tx) => {
+  async receive(tenantId: string, input: ReceiveLotInput, createdBy?: string, outerTx?: Db): Promise<Lot> {
+    return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
       const rows = await tx
         .insert(lots)
         .values({
