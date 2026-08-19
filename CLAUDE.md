@@ -1440,3 +1440,159 @@ any data. Also confirmed the refactor to `run-agent-turn.activity.ts`
 the pre-existing default assistant-mode flow: started a fresh default-mode
 conversation and confirmed a real stock question still gets the correct
 mocked reply.
+
+## Real login — password + Google signup/signin, email verification
+
+Picked as the next module after the onboarding-conversation feature shipped:
+that feature assumes a real user can reach it, but until now every token in
+this repo came from `scripts/mint-dev-token.ts` (dev/test-only, hard-blocked
+in production) and `POST /v1/tenants` created a tenant with no owning user
+at all. This closes docs Section 11's "real login/session-recovery" gap —
+the one that actually blocked a non-technical pilot user from reaching
+anything built so far.
+
+**Scope decision, asked and answered explicitly before writing any code**:
+the user asked, as solution-architect-lead brainstorming, whether this
+should be built in the shared `@qnsc-vn/identity` package (`qnsc-app-platform`
+repo) instead, so rally/opshub could reuse it. Answered no, build it in
+SoloDesk's own repo: no second consumer exists for a self-serve "signup
+creates your own new tenant" flow — rally/opshub are enterprise B2B,
+admin-creates-workspace-then-invites — same "two call sites don't earn a
+shared abstraction yet" discipline as `INTERNAL_SERVICE_TOKEN`'s own
+"revisit before a second consumer needs it" note, and `qnsc-app-platform`
+is a separate repo/package version this session can't iterate on directly.
+
+**What's genuinely reused from `@qnsc-vn/identity@6.0.0`, unchanged** —
+confirmed by reading the actual compiled package (`.d.ts` AND `.js`, not
+assumed): `signAccessToken`/`generateRefreshToken`/`hashToken`/
+`parseTtlSeconds` (exported standalone functions — `scripts/mint-dev-token.ts`
+already calls `signAccessToken` directly, so these were never private), and
+the real `AuthService`'s `refresh`/`logout`/`logoutAll`/`getMe`/
+`updateProfile` methods (real refresh-token rotation with theft detection,
+access-token denylist) once its ports are bound to real tables. `AuthSession
+.ssoProvider: string | null` and `JwtPayload.authMethod: 'password' | 'sso'`
+are already first-class fields in the package's own domain types — password
+sessions are an anticipated case, just one the package has no verification
+code for at all.
+
+**Why the package's own SSO login methods (`ssoLogin`/`ssoLoginFromConnection`)
+could NOT be used for Google login, found by reading the compiled `.js`, not
+guessed**: `ProvisioningConnection.workspaceId: string` is a single FIXED
+workspace id per `sso_connections` row — the package's whole JIT-provisioning
+model is "join a pre-existing, admin-configured workspace," with no path for
+"a brand-new user's first login creates their own new tenant." `AuthService`'s
+`createSession`/`toLoginResult` (the actual token-minting logic) are also
+private, reachable only through `ssoLogin`/`ssoLoginFromConnection`/`devLogin`
+— none of which fit. `SessionMinter` (`src/modules/auth/application/
+session-minter.ts`) mints sessions itself using the SAME exported primitives
++ the SAME injected `@nestjs/jwt` `JwtService` `AuthService` uses internally
+(confirmed via `grep this\.jwt` in the compiled `auth.service.js`: no
+per-call algorithm/key options, meaning `JwtModule`'s registered defaults
+ARE the signing config) — so every token minted here is byte-for-byte what
+`JwtStrategy` already verifies, and the real `AuthService.refresh`/`logout`/
+`logoutAll` work on these sessions afterward exactly as if the package had
+minted them itself.
+
+**A real architectural gap found while wiring Google login for a RETURNING
+user, not by reading the code**: `tenant_members` is correctly RLS-scoped
+(`tenant_id = current_setting('app.tenant_id', true)`), which means it
+structurally CANNOT be queried by `user_id` alone before any tenant context
+exists — exactly the question "which tenant does this user belong to"
+needs answering AT login time, before one can be established. Fixed with
+`identity.user_tenant_memberships` (`user_id`, `tenant_id`, no RLS) — same
+deliberately-denormalized-no-RLS-index pattern this repo already uses for
+`traceability.lot_traces`, maintained alongside `tenant_members` in the
+same transaction (`TenantMemberDrizzleRepository.add`), used only by the
+new `findTenantIdsForUser` port method. Never a place to bypass RLS —
+tenant_members itself is untouched and still fully RLS-enforced; this is a
+narrow, purpose-built lookup index, not a workaround.
+
+**A real transaction/RLS bug the Google-login e2e test caught, not manual
+review**: the first version of `loginWithGoogle` opened one outer
+`db.transaction(async (tx) => {...})` and threaded that `tx` through to
+`memberRepository.add(..., tx)` for a brand-new user's owner membership.
+`withTenantTransactionOrReuse`'s own contract is "reusing a provided `tx`
+assumes the CALLER already set `app.tenant_id` on it" (true for every
+existing caller, which all open their OWN `withTenantTransaction` first) —
+but a plain `db.transaction()` never sets it, so the INSERT hit
+`tenant_members`' RLS check with `current_setting('app.tenant_id', true)`
+literally unset, and Postgres rejected it with `invalid input syntax for
+type uuid: ''` (the RLS policy's own cast, not a bound query parameter).
+Fixed by NOT wrapping `loginWithGoogle` in one outer transaction at all —
+`upsertBySsoIdentity`/`tenantRepository.create`/`memberRepository.add` each
+open their own correctly-scoped transaction when called with no `tx`,
+matching `signupWithPassword`'s own already-accepted trade-off (tenant
+creation there isn't inside its transaction either, same "onboarding path"
+precedent as the pre-existing `TenantController.createTenant`) — an
+orphaned placeholder tenant on a mid-flight crash is tolerable; a wrong RLS
+context on a real write is not.
+
+**Password hashing**: `argon2` (argon2id) — OWASP's current recommended
+default, new real dependency; the package has zero password-auth code of
+any kind. **Google verification**: hand-rolled `GoogleTokenVerifier`
+(`src/platform/auth/google-token-verifier.ts`), same shape as the package's
+own `EntraTokenVerifier` (`jose`'s `createRemoteJWKSet` + `jwtVerify`
+against Google's real JWKS, checking issuer + audience), deliberately NOT
+routed through the package's `OidcTokenVerifier`/`ConnectionRegistry`
+broker — that machinery is built for admin-configured, per-workspace
+connections this product doesn't have; hand-verifying Google directly
+avoids forcing a single global consumer IdP through machinery designed for
+a different shape. Same injectable `jwksResolver` testability pattern as
+`EntraVerifierOptions` — the e2e test signs a fake token with a locally
+generated keypair, no real network call.
+
+**Email**: `EmailService` (`src/platform/email.service.ts`), one `fetch`
+POST to Resend's API, no SDK dependency — same "let key, I will input
+later" pattern as every other 3rd-party credential in this repo.
+`RESEND_API_KEY` unset (local dev/test) logs the email (including the
+verification/reset link) via `Logger.warn` instead of throwing, so manual
+testing never needs a real inbox.
+
+**Rate limiting**: reuses `@qnsc-vn/platform-cache`'s `CacheService
+.consumeRateLimit` — already wired (real atomic sliding-window Lua script
+on Valkey), not new infrastructure. 5 login attempts/15min per email, 3
+forgot-password/hour per email, 10 signups/hour per IP. Not optional for
+this audience — elderly, non-technical users are exactly who password-
+guessing bots target hardest, and this repo doesn't get a second chance to
+make a good first impression with a real pilot user locked out by a bot.
+
+**Scope cut, stated explicitly**: no `switchWorkspace`/multi-tenant-switch
+endpoint in this pass, even though `TenantMemberRole` already has
+`successor`/`accountant_delegate` implying real multi-membership use cases
+(a user with multiple tenant memberships just gets the first one found).
+`IWorkspaceService`/`IAccessService`/`ISsoConnectionRepository` are all
+confirmed `@Optional()` in the real `AuthService`'s constructor (verified
+against the compiled `.js`'s `__param` decorators, not assumed) — none are
+bound, so Nest injects `undefined` and the package's own code path for each
+is simply never exercised. `EntraTokenVerifier` IS mandatory (not
+`@Optional()`) even though this product never calls Entra — given inert
+placeholder options since `ssoLogin`/`ssoLoginFromConnection` (the only
+callers) are never invoked here.
+
+**Minimal, auth-events-only start on the "undo + audit log" pre-pilot
+gap** (explicitly NOT the general business audit log, which stays open):
+`identity.auth_audit_log`, backing the package's mandatory `IAuditService`
+port. `record()` never throws back to the caller, per that port's own
+contract — a bad audit row can never break a real login/logout/reset.
+
+Verified: typecheck clean, e2e 63/63 (57 pre-existing + 6 new — signup
+creates tenant+user+owner-membership atomically and blocks login before
+verification; duplicate email rejected; wrong password and a nonexistent
+email both reject identically (no enumeration leak); Google login creates
+a new tenant on first login and correctly reuses it on a second login with
+the same `sub`; forgot/reset-password round-trip confirms every existing
+session is revoked after reset; the `email_verify` token row carries the
+tenant id set at signup). Full e2e sweep across all 3 services green
+(backend-api 63/63, connector-hub 12/12, agent-orchestrator 35/35). Real
+manual end-to-end smoke test against the live dev server: real signup →
+read the real verification link from the log (no real inbox, same
+placeholder-credential convention as everywhere else) → verify → real
+session with `claims: {"role":"owner"}` → login → `GET /v1/auth/me` →
+`POST /v1/auth/refresh` (real token rotation, confirmed a genuinely
+different access/refresh pair came back) → `POST /v1/auth/logout` → old
+access token confirmed denylisted (401) → confirmed real Postgres state
+directly (`identity.users`, `identity.tenant_members`,
+`identity.user_tenant_memberships`, `identity.auth_audit_log` all correct,
+including the package's own real `auth.logout` audit event written through
+`AuthAuditService`) → confirmed duplicate signup (409) and wrong password
+(401) both rejected correctly.

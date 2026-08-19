@@ -20,7 +20,14 @@ GitHub repo, multiple independently-deployable services.
   Temporal worker) that renders a real Vietnamese invoice PDF via pdfkit
   and a vendored Unicode font (`assets/fonts/NotoSans-VF.ttf` — pdfkit's
   built-in fonts have zero Vietnamese glyph coverage, found by actually
-  reading a generated PDF, not assumed).
+  reading a generated PDF, not assumed). Real login is real too
+  (`src/modules/auth`): email + password signup/signin (argon2, email
+  verification, password reset) and Google Sign-In, both minting real
+  sessions on top of `@qnsc-vn/identity`'s real refresh-token rotation +
+  theft detection + access-token denylist (reused unchanged) — the
+  package's own SSO login methods couldn't be used as-is since they assume
+  joining a pre-existing fixed workspace, not a brand-new user creating
+  their own tenant on first login. See CLAUDE.md's "Real login" section.
 - `services/connector-hub` — NestJS + Fastify + Drizzle, a SEPARATE
   deployable (own Postgres role `solodesk_connector`, GRANTed only on its
   own `vault`/`sync` schemas — see `CLAUDE.md`'s connector-hub section for
@@ -123,7 +130,7 @@ cp services/backend-api/.env.example services/backend-api/.env
 cp services/connector-hub/.env.example services/connector-hub/.env
 cp services/agent-orchestrator/.env.example services/agent-orchestrator/.env
 cp services/ml-analytics/.env.example services/ml-analytics/.env
-# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY / INTERNAL_SERVICE_TOKEN per each .env.example's comments
+# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY / INTERNAL_SERVICE_TOKEN / JWT_PRIVATE_KEY / GOOGLE_OAUTH_CLIENT_ID / RESEND_API_KEY per each .env.example's comments
 pnpm install
 pnpm --filter @solodesk/backend-api db:migrate
 pnpm --filter @solodesk/connector-hub db:migrate
