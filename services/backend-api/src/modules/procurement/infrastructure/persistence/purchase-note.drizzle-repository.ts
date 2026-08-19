@@ -3,6 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { db, type Db } from '../../../../db/client';
 import { purchaseNotes } from '../../../../db/schema/purchase-notes';
 import { purchaseNoteLines } from '../../../../db/schema/purchase-note-lines';
+import { suppliers } from '../../../../db/schema/suppliers';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
 import type { IPurchaseNoteRepository, ResolvedPurchaseNoteLine } from '../../domain/ports/purchase-note.repository';
 import type { PurchaseNote, CreatePurchaseNoteInput } from '../../domain/procurement.types';
@@ -71,5 +72,18 @@ export class PurchaseNoteDrizzleRepository implements IPurchaseNoteRepository {
 
     const full = await loadNote(tx, note.id, tenantId);
     return full!;
+  }
+
+  async findSupplierNameByLotId(lotId: string, tenantId: string): Promise<string | null> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .select({ name: suppliers.name })
+        .from(purchaseNoteLines)
+        .innerJoin(purchaseNotes, eq(purchaseNoteLines.purchaseNoteId, purchaseNotes.id))
+        .innerJoin(suppliers, eq(purchaseNotes.supplierId, suppliers.id))
+        .where(and(eq(purchaseNoteLines.lotId, lotId), eq(purchaseNoteLines.tenantId, tenantId)))
+        .limit(1);
+      return rows[0]?.name ?? null;
+    });
   }
 }

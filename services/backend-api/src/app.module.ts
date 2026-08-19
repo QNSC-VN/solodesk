@@ -12,6 +12,7 @@ import { InvoicingTaxModule } from './modules/invoicing-tax/invoicing-tax.module
 import { PaymentReconcileModule } from './modules/payment-reconcile/payment-reconcile.module';
 import { BookingResourceModule } from './modules/booking-resource/booking-resource.module';
 import { ProcurementModule } from './modules/procurement/procurement.module';
+import { TraceabilityModule } from './modules/traceability/traceability.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ProcurementModule } from './modules/procurement/procurement.module';
     PaymentReconcileModule,
     BookingResourceModule,
     ProcurementModule,
+    TraceabilityModule,
   ],
   providers: [
     // Global — tenant scoping is not a per-route opt-in (Section 4.1).

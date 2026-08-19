@@ -397,6 +397,49 @@ sales-order's mirror image: buying stock in instead of selling it out.
   it as a purchase cost would be a real (and wrong) number, not a missing
   one, which is worse than refusing outright.
 
+## `traceability` — the one table in this codebase with NO RLS, on purpose
+
+Eighth (and, per the docs' module list, last of the originally-scoped
+domain modules) — `GET /v1/trace/:lotId` is the first genuinely PUBLIC,
+unauthenticated route with real business data behind it (a buyer scanning
+a QR code printed on a product). Every other route in this codebase
+assumes an authenticated tenant session; this one must work with NONE.
+
+- **`traceability.lot_traces` has no `tenant_id` RLS policy at all — not
+  an oversight, the entire point.** RLS policies gate on
+  `current_setting('app.tenant_id', true)`; a request with no tenant
+  context sets that to NULL, and `tenant_id = NULL` is never true, so a
+  naive "just query without setting tenant" approach on an RLS-protected
+  table returns nothing, not a leak — but it also means the feature
+  literally cannot work that way. The fix is a dedicated, deliberately
+  denormalized public-projection table with NO RLS, populated only by an
+  explicit, authenticated publish action — never touched by the public
+  read path, so there's no RLS bypass to reason about because there's no
+  RLS on this table to bypass in the first place.
+- **A row exists here ONLY if `POST /v1/trace/:lotId/publish` was called.**
+  Receiving a lot into stock (`catalog-inventory`, `procurement`) never
+  auto-publishes one — that would mean an OLDER module (`catalog-inventory`)
+  reaching FORWARD into a module built after it, breaking the layering
+  every other module composition in this codebase respects (`sales-order`/
+  `procurement`/`traceability` all depend on strictly earlier modules,
+  never the reverse).
+- **`lotRepository.findById(lotId, tenantId)` returning non-null IS the
+  ownership check** before `publishLotTrace` writes anything — RLS
+  guarantees a cross-tenant lot ID returns null here, so a tenant
+  literally cannot publish (or re-publish) a lot it doesn't own.
+  `test/traceability.e2e-spec.ts` proves this concretely: an "attacker"
+  tenant's publish attempt on another tenant's lot throws, and the lot's
+  public trace stays not-found afterward.
+- **`@Public()` + `@SkipTenantContext()` together, only on the `GET`
+  handler** — `POST /v1/trace/:lotId/publish` stays fully authenticated
+  and tenant-scoped as normal. Confirmed the public route never calls
+  `getCurrentTenantId()`/`assertTenantMatchesSession()` (would throw with
+  no ALS context entered — `TenantContextInterceptor` never runs for a
+  `@SkipTenantContext()` route, by design).
+- The public response DTO deliberately omits `tenantId` — no reason to
+  expose an internal tenant identifier to an anonymous buyer, even though
+  it isn't itself a secret.
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**

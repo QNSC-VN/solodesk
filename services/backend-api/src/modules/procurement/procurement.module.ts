@@ -24,6 +24,9 @@ import { PURCHASE_NOTE_REPOSITORY } from './domain/ports/purchase-note.repositor
     { provide: NEGOTIATED_PRICE_REPOSITORY, useClass: NegotiatedPriceDrizzleRepository },
     { provide: PURCHASE_NOTE_REPOSITORY, useClass: PurchaseNoteDrizzleRepository },
   ],
-  exports: [SupplierService, NegotiatedPriceService, PurchaseNoteService],
+  // PURCHASE_NOTE_REPOSITORY exported too: traceability needs
+  // findSupplierNameByLotId directly, same repository-to-repository
+  // composition rationale as sales-order/procurement injecting LOT_REPOSITORY.
+  exports: [SupplierService, NegotiatedPriceService, PurchaseNoteService, PURCHASE_NOTE_REPOSITORY],
 })
 export class ProcurementModule {}

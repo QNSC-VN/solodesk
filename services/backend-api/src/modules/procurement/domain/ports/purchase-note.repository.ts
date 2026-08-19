@@ -16,4 +16,6 @@ export interface IPurchaseNoteRepository {
   listByTenant(tenantId: string): Promise<PurchaseNote[]>;
   /** Resolved lines only (lot already received, cost already resolved by `PurchaseNoteService`) — REQUIRED `tx`, same convention as `IOrderRepository.create`. */
   create(tenantId: string, input: Pick<CreatePurchaseNoteInput, 'supplierId'>, lines: ResolvedPurchaseNoteLine[], tx: Db): Promise<PurchaseNote>;
+  /** Narrow read for `traceability` — the supplier name (not the full record) that sourced a lot, or `null` if it wasn't received via a purchase note. */
+  findSupplierNameByLotId(lotId: string, tenantId: string): Promise<string | null>;
 }
