@@ -1,0 +1,133 @@
+name: agent-orchestrator CI
+
+# Reuses QNSC-VN/qnsc-ci composite actions unchanged — same convention as
+# backend-api-ci.yml/connector-hub-ci.yml (docs Section 17.3).
+#
+# Runs BOTH backend-api's migrations AND this service's own migrations
+# against the same ephemeral test database, in that order — agent-
+# orchestrator's 0001_provision_agent_role.sql GRANTs on tables backend-api's
+# migrations create (identity.tenants, sales.orders), see that file's
+# header comment for the full reasoning.
+#
+# No Temporal service container needed here — the workflow-level e2e tests
+# use @temporalio/testing's TestWorkflowEnvironment, an ephemeral, real
+# Temporal test server the SDK downloads and manages itself.
+
+on:
+  pull_request:
+    paths:
+      - "services/agent-orchestrator/**"
+      - "services/backend-api/db/migrations/**"
+      - ".github/workflows/agent-orchestrator-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/agent-orchestrator/**"
+
+env:
+  QNSC_CI_REF: main # pin to a released tag once qnsc-ci cuts one
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REDIS_URL: redis://localhost:6379
+      JWT_ISSUER: solodesk
+      JWT_AUDIENCE: solodesk-api
+      TEMPORAL_ADDRESS: localhost:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: agent-tasks
+      # CI-only placeholder — every real agent turn fails loud with a real
+      # 401 from Anthropic, same as this repo's other placeholder secrets.
+      # No automated test depends on this actually working (see
+      # test/agent-conversation-workflow.e2e-spec.ts's header comment).
+      ANTHROPIC_API_KEY: "sk-ant-ci-only-placeholder-never-real"
+      ANTHROPIC_MODEL: claude-sonnet-4-5
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: solodesk_test
+          POSTGRES_USER: solodesk_superuser
+          POSTGRES_PASSWORD: ci_only_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U solodesk_superuser -d solodesk_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      valkey:
+        image: valkey/valkey:8
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node + pnpm
+        uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@${{ env.QNSC_CI_REF }}
+        with:
+          node-version: "24"
+
+      - name: Generate ephemeral test JWT keypair
+        id: jwt-keys
+        run: |
+          node -e "
+            const { generateKeyPairSync } = require('crypto');
+            const { publicKey, privateKey } = generateKeyPairSync('ec', {
+              namedCurve: 'P-256',
+              publicKeyEncoding: { type: 'spki', format: 'pem' },
+              privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+            });
+            const fs = require('fs');
+            fs.writeFileSync(process.env.GITHUB_ENV, 'JWT_PUBLIC_KEY<<EOF\n' + publicKey + 'EOF\n', { flag: 'a' });
+            fs.writeFileSync(process.env.GITHUB_ENV, 'DEV_JWT_PRIVATE_KEY<<EOF\n' + privateKey + 'EOF\n', { flag: 'a' });
+          "
+
+      # Ordering dependency — must run before this service's own migration.
+      - name: Run backend-api migrations (prerequisite tables) + app-role gate
+        working-directory: services/backend-api
+        env:
+          DATABASE_ADMIN_URL: postgres://solodesk_superuser:ci_only_password@localhost:5432/solodesk_test
+          SOLODESK_APP_ROLE_PASSWORD: ci_only_app_password
+        run: pnpm db:migrate:test
+
+      - name: Run agent-orchestrator migrations + agent-role safety gate
+        working-directory: services/agent-orchestrator
+        env:
+          DATABASE_ADMIN_URL: postgres://solodesk_superuser:ci_only_password@localhost:5432/solodesk_test
+          SOLODESK_AGENT_ROLE_PASSWORD: ci_only_agent_password
+        run: pnpm db:migrate:test
+
+      - name: Lint
+        run: pnpm --filter @solodesk/agent-orchestrator lint
+
+      - name: Typecheck
+        run: pnpm --filter @solodesk/agent-orchestrator typecheck
+
+      - name: Unit tests
+        run: pnpm --filter @solodesk/agent-orchestrator test
+
+      - name: E2E tests (Postgres tool-query + role isolation + Temporal workflow via TestWorkflowEnvironment)
+        working-directory: services/agent-orchestrator
+        env:
+          DATABASE_URL: postgres://solodesk_agent:ci_only_agent_password@localhost:5432/solodesk_test
+          DATABASE_ADMIN_URL: postgres://solodesk_superuser:ci_only_password@localhost:5432/solodesk_test
+        run: pnpm test:e2e
+
+      - name: Scan secrets
+        uses: QNSC-VN/qnsc-ci/actions/scan-secrets@${{ env.QNSC_CI_REF }}
+
+      - name: Validate OpenAPI contract
+        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@${{ env.QNSC_CI_REF }}
+        with:
+          working-directory: services/agent-orchestrator
+
+  # build-push-ecr (both the HTTP client image AND the worker image) /
+  # run-db-migration (prod) / ecs-run-task / verify-ecs-deploy /
+  # post-deploy-health-check / attest-image / notify-deploy -- same
+  # deliberate omission as the other two services' CI (Mục 20.6 YAGNI).

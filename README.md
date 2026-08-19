@@ -24,13 +24,24 @@ GitHub repo, multiple independently-deployable services.
   ViettelPost, MISA meInvoice, Viettel S-Invoice, VNPT Invoice,
   Booking.com, Agoda, national-free-platform) are scaffolded stubs, not
   fabricated integrations — see `stub-connectors.ts`.
-- Postgres RLS + non-superuser app role in BOTH services, done FIRST and
-  correctly — read `services/backend-api/db/migrations/0002_provision_app_role.sql`
-  and `services/connector-hub/db/migrations/0001_provision_connector_role.sql`
-  before adding any tenant-scoped table in either service.
+- `services/agent-orchestrator` — a THIRD separate deployable: a real
+  Temporal worker (`pnpm worker`, plain script, not NestJS) + a thin
+  NestJS HTTP client (`pnpm dev`, starts/signals/queries conversations as
+  Temporal workflows). Own Postgres role `solodesk_agent`, SELECT-only on
+  exactly `identity.tenants`/`sales.orders` — a genuinely different
+  security boundary from connector-hub's (READ yes, WRITE no, vs
+  connector-hub's NONE at all). One real Layer A tool
+  (`get_sales_summary`), calling the Anthropic SDK directly — no LiteLLM
+  gateway/Langfuse/RAG yet, an explicit scope decision, see CLAUDE.md.
+- Postgres RLS + non-superuser app role in ALL THREE services, done FIRST
+  and correctly — read `services/backend-api/db/migrations/0002_provision_app_role.sql`,
+  `services/connector-hub/db/migrations/0001_provision_connector_role.sql`,
+  and `services/agent-orchestrator/db/migrations/0001_provision_agent_role.sql`
+  before adding any tenant-scoped table in any service.
 - The cross-tenant leak tests (`services/backend-api/test/tenant-isolation.e2e-spec.ts`,
-  `services/connector-hub/test/role-isolation.e2e-spec.ts`) must never be
-  weakened to make them pass.
+  `services/connector-hub/test/role-isolation.e2e-spec.ts`,
+  `services/agent-orchestrator/test/role-isolation.e2e-spec.ts`) must never
+  be weakened to make them pass.
 
 - connector-hub's SePay webhook forwards a verified payment straight into
   backend-api's `payment-reconcile` (`POST /internal/payments/by-invoice-number`,
@@ -38,21 +49,26 @@ GitHub repo, multiple independently-deployable services.
   narrow MVP mechanism, not SNS/SQS or a general service-mesh scheme yet).
   Verified end-to-end against two live dev servers — see CLAUDE.md.
 
-Not yet built: `apps/mobile`, `apps/web-*`, `services/agent-orchestrator`,
-`services/ml-analytics`.
+Not yet built: `apps/mobile`, `apps/web-*`, `services/ml-analytics`.
 
 ## Local dev
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # postgres + valkey, shared by both services
+docker compose -f docker-compose.dev.yml up -d   # postgres + valkey, shared by all three services
+brew install temporal                            # agent-orchestrator only
 cp services/backend-api/.env.example services/backend-api/.env
 cp services/connector-hub/.env.example services/connector-hub/.env
-# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY per each .env.example's comments
+cp services/agent-orchestrator/.env.example services/agent-orchestrator/.env
+# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY per each .env.example's comments
 pnpm install
 pnpm --filter @solodesk/backend-api db:migrate
 pnpm --filter @solodesk/connector-hub db:migrate
-pnpm --filter @solodesk/backend-api dev      # :3000
-pnpm --filter @solodesk/connector-hub dev    # :3001
+pnpm --filter @solodesk/agent-orchestrator db:migrate   # AFTER backend-api's — see its 0001 migration
+pnpm --filter @solodesk/backend-api dev          # :3000
+pnpm --filter @solodesk/connector-hub dev        # :3001
+temporal server start-dev                        # separate terminal — :7233 gRPC, :8233 Web UI
+pnpm --filter @solodesk/agent-orchestrator worker  # separate terminal — the Activity executor
+pnpm --filter @solodesk/agent-orchestrator dev     # :3002 — the HTTP client
 ```
 
 Run the cross-tenant isolation gate locally before touching anything in

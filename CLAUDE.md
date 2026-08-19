@@ -614,3 +614,126 @@ format exactly. Verified end-to-end against two live dev servers: onboard
   bus (docs Section 6) if/when a second consumer of these events shows up,
   since a growing number of pre-shared-secret point-to-point integrations
   is exactly the coupling an event bus exists to avoid.
+
+---
+
+# `services/agent-orchestrator` — third deployable: Temporal worker + one real MCP tool
+
+Local dev needs the Temporal CLI (`brew install temporal`), then
+`temporal server start-dev` in its own terminal (embedded sqlite, Web UI
+at `:8233`) — self-hosted-vs-Cloud for a real deployment is an explicitly
+unresolved docs Section 13 business decision, not decided here. Then, in
+this service's directory: `pnpm worker` (the Activity executor — plain
+`tsx` script, NOT a NestJS app) and `pnpm dev` (the HTTP client — a thin
+NestJS app that starts/signals/queries workflows) as two SEPARATE
+processes, matching Temporal's own architectural requirement. `pnpm
+db:migrate` here MUST run AFTER backend-api's own migrations — see
+`db/migrations/0001_provision_agent_role.sql`'s header comment.
+
+## Scope decision, made explicit (recorded here, not silently narrowed)
+
+Docs Section 5 describes a LiteLLM gateway, Langfuse prompt management,
+and Layer B RAG (pgvector). NONE of that is built yet. This first cut is:
+a real Temporal worker, a real MCP-shaped tool-calling Activity, ONE real
+read-only Layer A tool (`get_sales_summary`), calling the Anthropic SDK
+DIRECTLY (docs Section 5.5 explicitly allows this: "calling the Anthropic/
+OpenAI/Google SDKs directly ... is sufficient"). No multi-provider
+fallback, no per-tenant LLM budget, no Langfuse, no RAG. Promote pieces of
+this incrementally as real need shows up — don't assume the full Section 5
+stack exists because this directory does.
+
+## Why this service's DB role is READ, unlike connector-hub's NONE
+
+`solodesk_agent` (own migration, own NOSUPERUSER/NOBYPASSRLS provisioning,
+same pattern as the other two services) is GRANTed SELECT — and ONLY
+SELECT — on exactly the tables a Layer A tool needs
+(`identity.tenants`, `sales.orders` so far), nothing else, no
+INSERT/UPDATE/DELETE anywhere. This is a genuinely different security
+boundary from connector-hub's (which must NEVER read backend-api's
+business tables at all): agent-orchestrator's whole job is ANSWERING
+QUESTIONS about that data (docs Section 5.1's Layer A — "the household's
+own data ... executed directly against Postgres with `app.tenant_id` set
+so RLS enforces automatically"), so read access is the point, not a leak.
+`test/role-isolation.e2e-spec.ts` proves both halves for real: CAN read
+`sales.orders`, CANNOT write to it, CANNOT read tables it wasn't
+explicitly GRANTed on (`catalog.skus`, connector-hub's `vault.credentials`).
+
+**Cross-service migration ordering is a REAL, load-bearing dependency
+here** (unlike connector-hub, which has zero schema coupling to
+backend-api on purpose) — `0001_provision_agent_role.sql` GRANTs on tables
+backend-api's own migrations create. Run backend-api's migrations first,
+every environment, or this one 42P01s loudly.
+
+## No AsyncLocalStorage tenant-context layer on this service — a deliberate simplification
+
+Unlike backend-api/connector-hub, this service has neither
+`tenant-context.interceptor.ts` nor `runWithTenant()`/`getCurrentTenantId()`.
+Reasoning: Activities run in the WORKER process, invoked by Temporal
+directly with explicit arguments — there is no HTTP request lifecycle for
+an ALS store to attach to, and Temporal's own determinism/replay model
+favors explicit arguments over hidden ambient state anyway. On the HTTP
+client side, `@CurrentTenant()` (`platform/current-tenant.decorator.ts`)
+reads `request.user.contextId` directly, once, per request — there's no
+repository layer on that side consuming an ambient context either.
+`platform/tenant-db.ts`'s `withTenantTransaction` is the same RLS + `SET
+LOCAL app.tenant_id` mechanism as the other two services, just without
+the ALS wrapper — `tenantId` is a plain parameter everywhere, always.
+
+## Workflow-id-embeds-tenant is routing, NOT the security boundary
+
+`agent-conv-{tenantId}-{conversationId}` — docs' own explicit framing:
+"Workflow ID = tenant:session — observability/routing only, NOT the
+security boundary." Safe by CONSTRUCTION, not by an explicit runtime
+assert: `ConversationService` always builds the workflow id from the
+CALLER'S OWN tenantId (from their verified JWT), never a client-supplied
+one — a tenant can only ever reach a workflow whose id embeds their own
+tenantId, because they have no way to make the server embed someone
+else's.
+
+## Prompt injection defense (docs Section 5.9) — one layer of several, not a complete answer by itself
+
+`platform/prompt-injection.ts`'s `wrapUntrustedContent` wraps a user's raw
+message in an explicit `<user_message>` delimiter before it's concatenated
+into the prompt sent to Anthropic — a structural "this is data, not a
+directive" signal, paired with a system-prompt sentence saying the same
+thing explicitly. This does NOT prevent injection by itself; the other
+layers already in place: `getSalesSummaryToolSchema` takes ZERO
+caller-supplied arguments (the smallest possible attack surface for a
+first tool — nothing an injected instruction could smuggle meaning
+through), `tenantId` never comes from the model or the tool call, always
+from the workflow's own argument chain back to the caller's JWT, and there
+is no free-form SQL generation anywhere in this service (Layer A never
+will have one, by the docs' own design).
+
+## A real bug found by actually running this against Anthropic's live API (not by reading the code)
+
+Temporal's DEFAULT Activity retry policy retried a genuine 401
+(`ANTHROPIC_API_KEY` invalid/placeholder) three times before giving up —
+three wasted real calls to Anthropic's production endpoint for a failure
+that could never succeed by retrying. Fixed in
+`run-agent-turn.activity.ts`'s `createMessage` helper: any Anthropic
+`APIError` with a 4xx status OTHER than 429 is re-thrown as
+`ApplicationFailure.nonRetryable(...)` (from `@temporalio/common`),
+stopping the Activity's retry policy cold — same classification
+discipline as connector-hub's `connector-http.ts` (429/5xx/network stay
+retryable, other 4xx never do). Verified the fix for real: before, the
+same placeholder key produced 3 real 401s per message; after, exactly 1.
+
+## Real verification performed
+
+Typecheck clean. `test/get-sales-summary.e2e-spec.ts` +
+`test/role-isolation.e2e-spec.ts`: real Postgres, no mocks (today's-orders
+math including the Vietnam UTC+7 day-boundary correction, read-yes/write-no/
+cross-schema-no role boundary). `test/agent-conversation-workflow.e2e-spec.ts`:
+real Temporal workflow/Activity/Update/Query semantics via
+`@temporalio/testing`'s `TestWorkflowEnvironment` (an ephemeral, real
+Temporal test server the SDK manages itself — no external Temporal server
+needed in CI), `runAgentTurn` stubbed there on purpose since no automated
+test should depend on a real paid Anthropic key; the idle-timeout
+termination is proven via time-skipping, not a real 24h wait. Full live
+smoke test against a real `temporal server start-dev` + a real worker
+process + a real NestJS client: mint token → start conversation → send
+message → real HTTPS round-trip to Anthropic's actual production endpoint
+→ clean real 401 (proving the entire pipeline, not just isolated pieces) →
+confirmed the retry-classification fix by observing exactly one API call
+on the second attempt where the first had made three.
