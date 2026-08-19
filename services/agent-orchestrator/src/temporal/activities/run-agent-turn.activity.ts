@@ -3,6 +3,7 @@ import { ApplicationFailure } from '@temporalio/common';
 import { wrapUntrustedContent } from '../../platform/prompt-injection';
 import { getSalesSummary, getSalesSummaryToolSchema, GET_SALES_SUMMARY_TOOL_NAME } from './tools/get-sales-summary.tool';
 import { getStockLevel, getStockLevelToolSchema, GET_STOCK_LEVEL_TOOL_NAME } from './tools/get-stock-level.tool';
+import { getOutstandingInvoices, getOutstandingInvoicesToolSchema, GET_OUTSTANDING_INVOICES_TOOL_NAME } from './tools/get-outstanding-invoices.tool';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -47,6 +48,10 @@ const TOOLS: Record<string, { schema: Anthropic.Tool; handler: (tenantId: string
       const { skuCode } = rawInput as { skuCode: string };
       return getStockLevel({ tenantId, skuCode });
     },
+  },
+  [GET_OUTSTANDING_INVOICES_TOOL_NAME]: {
+    schema: getOutstandingInvoicesToolSchema,
+    handler: async (tenantId) => getOutstandingInvoices({ tenantId }),
   },
 };
 

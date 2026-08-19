@@ -649,17 +649,18 @@ same pattern as the other two services) is GRANTed SELECT — and ONLY
 SELECT — on exactly the tables a Layer A tool needs, one migration per
 tool that introduced a new one (`0001`: `identity.tenants`/`sales.orders`
 for `get_sales_summary`; `0002`: `catalog.skus`/`catalog.lots` for
-`get_stock_level`), nothing else, no INSERT/UPDATE/DELETE anywhere ever.
-This is a genuinely different security boundary from connector-hub's
-(which must NEVER read backend-api's business tables at all):
-agent-orchestrator's whole job is ANSWERING QUESTIONS about that data
-(docs Section 5.1's Layer A — "the household's own data ... executed
+`get_stock_level`; `0003`: `tax.invoices`/`payments.payments` for
+`get_outstanding_invoices`), nothing else, no INSERT/UPDATE/DELETE
+anywhere ever. This is a genuinely different security boundary from
+connector-hub's (which must NEVER read backend-api's business tables at
+all): agent-orchestrator's whole job is ANSWERING QUESTIONS about that
+data (docs Section 5.1's Layer A — "the household's own data ... executed
 directly against Postgres with `app.tenant_id` set so RLS enforces
 automatically"), so read access is the point, not a leak.
 `test/role-isolation.e2e-spec.ts` proves both halves for real: CAN read
-`sales.orders`/`catalog.skus`/`catalog.lots`, CANNOT write to any of them,
-CANNOT read a table it wasn't explicitly GRANTed on (`tax.invoices`,
-connector-hub's `vault.credentials`).
+`sales.orders`/`catalog.skus`/`catalog.lots`/`tax.invoices`/`payments.payments`,
+CANNOT write to any of them, CANNOT read a table it wasn't explicitly
+GRANTed on (`booking.bookings`, connector-hub's `vault.credentials`).
 
 **Cross-service migration ordering is a REAL, load-bearing dependency
 here** (unlike connector-hub, which has zero schema coupling to

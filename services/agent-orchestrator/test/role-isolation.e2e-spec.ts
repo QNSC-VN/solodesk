@@ -5,17 +5,19 @@ import { db } from '../src/db/client';
 /**
  * Real Postgres, no mocks — `solodesk_agent`'s boundary is READ-ONLY on
  * exactly the tables it's been GRANTed (identity.tenants, sales.orders,
- * catalog.skus, catalog.lots — one migration per tool that needed a new
- * table, see 0001/0002), nothing else. Different shape from connector-hub's
- * role-isolation test (which proves ZERO access to backend-api's schemas)
- * — here the point is READ yes, WRITE no, and no access BEYOND the
- * specific tables granted.
+ * catalog.skus, catalog.lots, tax.invoices, payments.payments — one
+ * migration per tool that needed a new table, see 0001/0002/0003), nothing
+ * else. Different shape from connector-hub's role-isolation test (which
+ * proves ZERO access to backend-api's schemas) — here the point is READ
+ * yes, WRITE no, and no access BEYOND the specific tables granted.
  */
 describe('solodesk_agent role isolation — real Postgres, no mocks', () => {
-  it('CAN read sales.orders and catalog.skus/lots — the tables its tools actually query', async () => {
+  it('CAN read every table its tools actually query', async () => {
     await expect(db.execute(sql`SELECT * FROM sales.orders LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM catalog.skus LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM catalog.lots LIMIT 1`)).resolves.toBeDefined();
+    await expect(db.execute(sql`SELECT * FROM tax.invoices LIMIT 1`)).resolves.toBeDefined();
+    await expect(db.execute(sql`SELECT * FROM payments.payments LIMIT 1`)).resolves.toBeDefined();
   });
 
   it('CANNOT insert into sales.orders — read-only, by design', async () => {
@@ -30,8 +32,15 @@ describe('solodesk_agent role isolation — real Postgres, no mocks', () => {
     ).rejects.toThrow();
   });
 
-  it('CANNOT read a table it has not been explicitly GRANTed on (tax.invoices)', async () => {
-    await expect(db.execute(sql`SELECT * FROM tax.invoices LIMIT 1`)).rejects.toThrow();
+  it('CANNOT insert into tax.invoices — read-only, by design', async () => {
+    await expect(
+      db.execute(sql`INSERT INTO tax.invoices (tenant_id, order_id, invoice_number, tax_rule_id, subtotal, tax_rate, tax_amount, total_amount, requires_e_invoice, status)
+        VALUES (gen_random_uuid(), gen_random_uuid(), 'X', gen_random_uuid(), '1.00', '0', '0', '1.00', false, 'issued')`),
+    ).rejects.toThrow();
+  });
+
+  it('CANNOT read a table it has not been explicitly GRANTed on (booking.bookings)', async () => {
+    await expect(db.execute(sql`SELECT * FROM booking.bookings LIMIT 1`)).rejects.toThrow();
   });
 
   it('CANNOT read connector-hub\'s vault schema', async () => {
