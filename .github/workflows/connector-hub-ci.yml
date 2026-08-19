@@ -34,6 +34,7 @@ jobs:
       GHN_API_BASE_URL: https://online-gateway.ghn.vn/shiip/public-api
       GHTK_API_BASE_URL: https://services.giaohangtietkiem.vn
       SHOPEE_API_BASE_URL: https://partner.shopeemobile.com
+      TIKTOK_SHOP_API_BASE_URL: https://open-api.tiktokglobalshop.com
       BACKEND_API_BASE_URL: http://localhost:3000/v1
       # Must match backend-api-ci.yml's value if a cross-service integration
       # test ever runs both in one job.

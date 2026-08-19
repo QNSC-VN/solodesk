@@ -4,13 +4,14 @@ import type { ConnectorProvider, CredentialPayload } from '../vault/domain/vault
 
 /**
  * Every provider named in docs/ARCHITECTURE.md Section 8 that is NOT one of
- * the 4 fully-wired reference connectors (SePay, GHN, GHTK, Shopee — see
- * their own folders). Each of these throws loudly rather than pretending to work —
- * an honest scope cut, not a silent gap. Real credential-signing/API-shape
- * logic per provider is deliberately NOT fabricated here (Vietnam e-invoice
- * XML/SOAP shapes, TikTok Shop OAuth, Lazada's signature scheme, etc. are
- * each non-trivial and unverifiable without live credentials — see the
- * scope decision recorded in this repo's CLAUDE.md).
+ * the 5 fully-wired reference connectors (SePay, GHN, GHTK, Shopee, TikTok
+ * Shop — see their own folders). Each of these throws loudly rather than
+ * pretending to work — an honest scope cut, not a silent gap. Real
+ * credential-signing/API-shape logic per provider is deliberately NOT
+ * fabricated here (Vietnam e-invoice XML/SOAP shapes, Lazada's signature
+ * scheme, Booking.com/Agoda's OAuth2-certified partner APIs, etc. are each
+ * non-trivial and unverifiable without live credentials — see the scope
+ * decision recorded in this repo's CLAUDE.md).
  *
  * To promote one of these to a real adapter: move it to its own
  * `connectors/<provider>/<provider>.adapter.ts` following `sepay.adapter.ts`'s
@@ -30,7 +31,6 @@ function makeStubAdapter(provider: ConnectorProvider, displayName: string) {
   return StubAdapter;
 }
 
-export class TiktokShopAdapter extends makeStubAdapter('tiktok_shop', 'TikTok Shop') {}
 export class LazadaAdapter extends makeStubAdapter('lazada', 'Lazada') {}
 export class ViettelpostAdapter extends makeStubAdapter('viettelpost', 'ViettelPost') {}
 export class MisaMeinvoiceAdapter extends makeStubAdapter('misa_meinvoice', 'MISA meInvoice') {}
@@ -43,7 +43,6 @@ export class NationalFreePlatformAdapter extends makeStubAdapter('national_free_
 
 @Module({
   providers: [
-    TiktokShopAdapter,
     LazadaAdapter,
     ViettelpostAdapter,
     MisaMeinvoiceAdapter,
@@ -54,7 +53,6 @@ export class NationalFreePlatformAdapter extends makeStubAdapter('national_free_
     NationalFreePlatformAdapter,
   ],
   exports: [
-    TiktokShopAdapter,
     LazadaAdapter,
     ViettelpostAdapter,
     MisaMeinvoiceAdapter,

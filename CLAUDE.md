@@ -551,18 +551,38 @@ resolution described above), **GHN** (shipping — order create/track,
 `Token`/`ShopId` header auth), **GHTK** (shipping — order create/track,
 plain `Token` header auth, promoted from a stub — see the section below
 on why it was promoted before an e-invoice provider), **Shopee**
-(marketplace — Open Platform v2 HMAC-SHA256 request signing). Every
-method's field/endpoint shape matches each provider's public docs as
-accurately as training knowledge allows, but NONE of the four has been
-exercised against a live account — that needs the user's real keys,
-entered via `POST /v1/vault/:provider/credentials`, then confirmed via
-`POST /v1/connectors/:provider/verify` (a real API call, not a format
-check). The remaining providers (`stub-connectors.ts`: TikTok Shop,
-Lazada, ViettelPost, MISA meInvoice, Viettel S-Invoice, VNPT Invoice,
-Booking.com, Agoda, national-free-platform) throw a clear not-implemented
-error rather than fabricate signing/API logic — promote one by moving it
-to its own `connectors/<provider>/` folder following `sepay.adapter.ts`'s
-shape.
+(marketplace — Open Platform v2 HMAC-SHA256 request signing), **TikTok
+Shop** (marketplace — Partner Center API v2, HMAC-SHA256 wrapped with the
+app secret on both ends of the signed string, the same signing family as
+Shopee's — see "Why TikTok Shop, not Booking.com" below). Every method's
+field/endpoint shape matches each provider's public docs as accurately as
+training knowledge allows, but NONE of the five has been exercised against
+a live account — that needs the user's real keys, entered via `POST
+/v1/vault/:provider/credentials`, then confirmed via `POST
+/v1/connectors/:provider/verify` (a real API call, not a format check).
+The remaining providers (`stub-connectors.ts`: Lazada, ViettelPost, MISA
+meInvoice, Viettel S-Invoice, VNPT Invoice, Booking.com, Agoda,
+national-free-platform) throw a clear not-implemented error rather than
+fabricate signing/API logic — promote one by moving it to its own
+`connectors/<provider>/` folder following `sepay.adapter.ts`'s shape.
+
+## Why TikTok Shop, not Booking.com — a mid-flight course correction
+
+Booking.com was the first pick for the 5th connector, reasoned as closing
+a real gap (connector-hub has no OTA/hospitality connector at all, and
+agent-orchestrator's `get_upcoming_bookings` tool already covers that
+domain from the read side). That reasoning was wrong on a factual point
+checked only after starting: Booking.com's real Connectivity API is
+OAuth2 + partner-certification gated, not a simple key/token or HMAC
+REST call like SePay/GHN/GHTK/Shopee — the same "confidently-wrong code
+without a way to verify it" risk category the e-invoice providers were
+already passed over for (see below). Course-corrected to TikTok Shop
+before writing any adapter code: same HMAC-signing family as the
+already-working `shopee.adapter.ts` (proven shape, not a new risk
+category), and arguably the more relevant channel for Vietnamese
+household sellers right now than Lazada. Domain diversity (OTA/booking)
+is a real gap still — just not one to close by assuming an API shape
+without checking it first.
 
 ## Why GHTK (shipping) was promoted next, not an e-invoice provider
 

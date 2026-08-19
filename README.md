@@ -18,9 +18,9 @@ GitHub repo, multiple independently-deployable services.
   own `vault`/`sync` schemas — see `CLAUDE.md`'s connector-hub section for
   the security-boundary rationale). Credential vault (AES-256-GCM at
   rest), webhook intake with dedup, resilience layer (circuit breaker +
-  retry classification, per-provider bulkhead). Four reference connectors
-  with real (not live-verified) API shapes: SePay VietQR, GHN, GHTK, Shopee.
-  The remaining providers Section 8 lists (TikTok Shop, Lazada,
+  retry classification, per-provider bulkhead). Five reference connectors
+  with real (not live-verified) API shapes: SePay VietQR, GHN, GHTK,
+  Shopee, TikTok Shop. The remaining providers Section 8 lists (Lazada,
   ViettelPost, MISA meInvoice, Viettel S-Invoice, VNPT Invoice,
   Booking.com, Agoda, national-free-platform) are scaffolded stubs, not
   fabricated integrations — see `stub-connectors.ts`.
