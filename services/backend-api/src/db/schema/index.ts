@@ -10,3 +10,5 @@ export * from './tax-rules';
 export * from './invoices';
 export * from './invoice-sequences';
 export * from './payments';
+export * from './resources';
+export * from './bookings';

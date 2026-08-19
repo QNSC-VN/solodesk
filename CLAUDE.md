@@ -328,6 +328,39 @@ reaching into another schema directly.
   /v1/payments` also serves the real MVP need of staff manually recording a
   cash payment at the counter.
 
+## `booking-resource` — the aggregate-race case `atomicUpdate` can't cover
+
+Sixth module, two aggregates (`Resource`, `Booking`) like `catalog-inventory`'s
+`Sku`/`Lot`. Its contribution: capacity-vs-overlapping-bookings is the first
+race condition in this codebase that a single guarded `UPDATE ... RETURNING`
+genuinely cannot fix.
+
+- **Why not `atomicUpdate`:** that pattern locks ONE existing row and
+  re-checks its guard. Booking capacity is a check across a SET of
+  overlapping rows, and when a time slot is still completely empty there is
+  no row yet to lock — two concurrent first-hold requests for an empty slot
+  would both read "0 used, capacity available" and both insert, oversold.
+- **The fix: `pg_advisory_xact_lock(hashtext(resourceId)::bigint)`**, taken
+  at the top of `BookingDrizzleRepository.requestHold`'s transaction, before
+  the overlap sum runs. Transaction-scoped (`_xact_`), so it releases
+  automatically on commit OR rollback — no manual unlock, no risk of a
+  held lock outliving a crashed request. Keyed by `resourceId` alone (not
+  also `tenantId`) is fine — `resourceId` is already globally unique, and
+  different resources never contend for the same lock. Verified by
+  `test/booking-race.e2e-spec.ts`: 20 concurrent holds against a
+  capacity-10 resource, exactly 10 succeed; 2 concurrent holds on a
+  capacity-1 resource for the identical window, exactly 1 succeeds.
+- **An expired, never-confirmed hold is never swept by a background job.**
+  It just stops satisfying `activeForCapacity`'s `hold_expires_at > now()`
+  check once expired, so it stops counting toward capacity on its own —
+  correctness doesn't depend on a cron/cleanup worker existing. A sweep job
+  for tidiness/reporting (e.g. bulk-marking stale holds `cancelled`) is a
+  real but separate concern, out of scope until something other than
+  correctness needs it (YAGNI).
+- `confirm`/`cancel`/`markNoShow` ARE single-row guarded updates (`atomicUpdate`'s
+  pattern applies fine there — no aggregate check needed) — only the
+  capacity check on `requestHold` needed the advisory lock.
+
 ## Conventions
 
 Conventional commits. New env var → `src/config/env.schema.ts` **and**
