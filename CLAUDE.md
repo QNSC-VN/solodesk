@@ -1833,3 +1833,49 @@ correct unread count; an expired `sd_exp` cookie triggers the proxy's
 real proactive refresh, confirmed by real NEW `Set-Cookie` headers
 containing a genuinely rotated access/refresh/csrf token pair from a real
 `backend-api` call.
+
+## web-accounting extended — invoices + stock, reusing the same components
+
+Picked as the next module, confirmed with the user, right after
+`web-accounting` shipped with orders only. Extends the SAME
+`DashboardShell`/`DataTable`/`StatusPill` components to two more real data
+sources — no new architecture, the login/BFF/proxy work was already done.
+
+**One small, real, justified backend addition**: the stock page needs SKU
+catalog metadata + aggregated quantity in one view, but no endpoint gave
+that — `GET /v1/lots/available/:skuId` only covers one SKU at a time,
+which would mean N+1 calls to build a stock table (the exact anti-pattern
+`OrderDrizzleRepository.listByTenant`'s own header comment already
+documents avoiding). Added `ILotRepository.listAvailableQuantitiesByTenant`
+(same aggregation as `getAvailableQuantity`, `GROUP BY sku_id`, one query
+for the whole tenant) and `InventoryService.getStockSummary` (joins it
+against `ISkuRepository.listByTenant` in-memory — `InventoryService`
+gained a `SKU_REPOSITORY` injection alongside its existing
+`LOT_REPOSITORY`), exposed as `GET /v1/lots/stock-summary`. A SKU with no
+lots received yet still appears, zeroed out, not silently missing.
+
+**A real operational finding, hit while running the test suite, not a code
+bug**: `POST /v1/auth/signup`'s real rate limit (10/hour per IP, built
+into the real-login feature) tripped repeatedly while iterating on
+`web-accounting`'s test suite — each spec file was creating a fresh
+account per `it()` (11 real signups in one run, several runs in a row).
+`backend-api`'s OWN e2e tests never hit this because they construct
+`SignupService` directly, bypassing the HTTP controller the limiter lives
+on; `web-accounting`'s tests are the first in this repo to call the real
+`/v1/auth/signup` endpoint over real HTTP repeatedly, so they're the
+first to actually exercise this real production constraint. Fixed on the
+TEST side, correctly, not by weakening the limiter: every spec file now
+shares ONE real signup across all its `it()` blocks via `beforeAll,`
+cutting a full test run from 11 signups to 5.
+
+Verified: `next build` clean, ESLint clean, `pnpm test` 7/7 (5 real
+signups total, real backend-api, real Postgres, no mocks), backend-api's
+own e2e suite 72/72 (70 pre-existing + 2 new for
+`getStockSummary`/`listAvailableQuantitiesByTenant`). Real manual smoke
+test against the live dev stack: issued a real invoice via real HTTP
+(SKU → lot → order → invoice, the full chain), seeded a real SKU + lot for
+stock, then hit `/invoices` and `/stock` with a session crafted from real
+tokens (same technique as the original `web-accounting` smoke test) and
+confirmed both pages render the real invoice number/total/e-invoice pill
+and the real SKU code/quantity/active-status pill; confirmed all 3
+sidebar nav links (Đơn hàng/Hóa đơn/Kho hàng) render correctly.

@@ -133,14 +133,20 @@ GitHub repo, multiple independently-deployable services.
   portal` is deliberately public). For the shared accountant/support staff
   (docs Section 8), not the household owner — that's the separate Flutter
   `apps/mobile`. Login (password + Google Sign-In) and a dashboard shell +
-  orders list + notification bell, all real. This app is its own thin BFF:
-  `backend-api` has no CORS configured, so Server Actions/`proxy.ts` (Next
-  16's renamed `middleware.js`) call it server-side and hold the session
-  in `httpOnly` cookies — the browser never sees a token. `proxy.ts` also
-  proactively refreshes the access token before it expires. See CLAUDE.md's
-  "web-accounting" section for the full design (including the page-level
-  design-system override at `design-system/solodesk/pages/web-accounting.md`).
-  Invoices/stock pages reuse the same components later — not built yet.
+  orders/invoices/stock lists + notification bell, all real, all sharing
+  the same `DashboardShell`/`DataTable`/`StatusPill` components. This app
+  is its own thin BFF: `backend-api` has no CORS configured, so Server
+  Actions/`proxy.ts` (Next 16's renamed `middleware.js`) call it
+  server-side and hold the session in `httpOnly` cookies — the browser
+  never sees a token. `proxy.ts` also proactively refreshes the access
+  token before it expires. The stock page's data source
+  (`GET /v1/lots/stock-summary`) is a small, real, additive backend
+  endpoint added alongside it (batches SKU + lot-quantity data in one
+  query, not N+1). See CLAUDE.md's "web-accounting" sections for the full
+  design (including the page-level design-system override at
+  `design-system/solodesk/pages/web-accounting.md`). Table sorting, a
+  tenant switcher, and a forgot-password page are still real, deliberate
+  cuts — not built yet.
 
 Not yet built: `apps/mobile`, `apps/web-b2g-dashboard`.
 
