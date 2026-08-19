@@ -28,6 +28,16 @@ GitHub repo, multiple independently-deployable services.
   package's own SSO login methods couldn't be used as-is since they assume
   joining a pre-existing fixed workspace, not a brand-new user creating
   their own tenant on first login. See CLAUDE.md's "Real login" section.
+  Notifications (`src/modules/notifications`) are real too: a transactional
+  outbox (in-app `notifications` + `email_outbox`, both written atomically
+  with the triggering business event — the signup/reset emails and a new
+  e-invoice-threshold-crossed alert), a pluggable `IEmailProvider` (Resend
+  default, a real SES option too), and `pnpm worker:notifications` (a
+  BullMQ-scheduled sweep, same "separate process" split as the PDF worker)
+  dispatching queued emails with backoff/dead-letter. No SSE, no
+  preferences — a plain unread-count + list is the right shape for this
+  audience. See CLAUDE.md's "Notifications" section for the rally/opshub
+  research this design is based on.
 - `services/connector-hub` — NestJS + Fastify + Drizzle, a SEPARATE
   deployable (own Postgres role `solodesk_connector`, GRANTed only on its
   own `vault`/`sync` schemas — see `CLAUDE.md`'s connector-hub section for
@@ -130,7 +140,7 @@ cp services/backend-api/.env.example services/backend-api/.env
 cp services/connector-hub/.env.example services/connector-hub/.env
 cp services/agent-orchestrator/.env.example services/agent-orchestrator/.env
 cp services/ml-analytics/.env.example services/ml-analytics/.env
-# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY / INTERNAL_SERVICE_TOKEN / JWT_PRIVATE_KEY / GOOGLE_OAUTH_CLIENT_ID / RESEND_API_KEY per each .env.example's comments
+# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY / INTERNAL_SERVICE_TOKEN / JWT_PRIVATE_KEY / GOOGLE_OAUTH_CLIENT_ID / RESEND_API_KEY (or EMAIL_PROVIDER=ses + AWS_*) per each .env.example's comments
 pnpm install
 pnpm --filter @solodesk/backend-api db:migrate
 pnpm --filter @solodesk/connector-hub db:migrate
@@ -142,6 +152,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 3003   # separate terminal
 cd ../..
 pnpm --filter @solodesk/backend-api dev          # :3000
 pnpm --filter @solodesk/backend-api worker:pdf   # separate terminal — invoice PDF generation
+pnpm --filter @solodesk/backend-api worker:notifications  # separate terminal — email_outbox relay sweep
 pnpm --filter @solodesk/connector-hub dev        # :3001
 temporal server start-dev                        # separate terminal — :7233 gRPC, :8233 Web UI
 pnpm --filter @solodesk/agent-orchestrator worker  # separate terminal — the Activity executor

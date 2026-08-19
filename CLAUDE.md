@@ -1596,3 +1596,129 @@ directly (`identity.users`, `identity.tenant_members`,
 including the package's own real `auth.logout` audit event written through
 `AuthAuditService`) → confirmed duplicate signup (409) and wrong password
 (401) both rejected correctly.
+
+## Notifications — transactional outbox (email + in-app), pluggable Resend/SES
+
+Picked after the user asked, as solution-architect-lead, to survey how
+sibling QNSC products (rally, opshub) handle notifications before building
+SoloDesk's own — a research fork read both repos' actual compiled/source
+code directly (not guessed).
+
+**No shared `@qnsc-vn/notifications` package exists.** rally and opshub each
+hand-roll notifications independently (diverged copies) — nothing to
+`pnpm add`; only the *design* was worth reusing. Both use the
+**transactional outbox pattern** (an outbox row inserted in the SAME DB
+transaction as the triggering business event, a separate relay dispatches it
+later) — confirmed against current (2026) industry guidance (AWS
+Prescriptive Guidance, Cloudflight engineering) as still the correct answer
+to the dual-write problem: enqueuing straight to a queue can silently lose a
+notification if the process crashes between the DB commit and the enqueue
+call, a real bad failure mode for a government compliance program (a missed
+e-invoice-threshold notice is not a nice-to-have).
+
+**A real cross-repo bug found and deliberately avoided**: rally enqueues its
+email cascade in a post-commit, error-swallowed task — a dual write, since
+the notification row is already committed with nothing left to retry if the
+enqueue itself fails. opshub's fix — insert the outbox row in the SAME
+transaction as the domain event — is the version built here:
+`NotificationService.notify(tenantId, input, tx?)` always writes the in-app
+`notifications` row, and (when `input.email` is present) the `email_outbox`
+row, both via `withTenantTransactionOrReuse` so it composes into a caller's
+existing transaction (e.g. `InvoiceService.issueInvoice`'s `tx`) exactly
+like every other cross-aggregate write in this codebase.
+
+**Scope, decided deliberately**: no Server-Sent Events, no Valkey pub/sub
+"wake" channel, no per-user notification preferences. rally/opshub route
+in-app delivery through SSE with a per-event access recheck — real
+engineering solving rally's fine-grained per-project-ACL churn (a user's
+visibility can change mid-session), which SoloDesk's tenant model doesn't
+have (fixed role per tenant), built for a desktop-first, always-open
+collaboration tool. For an elderly/non-technical, mobile, occasional-use
+audience, a plain unread-count + list fetched on demand
+(`GET /v1/notifications`, `GET /v1/notifications/unread-count`,
+`POST /v1/notifications/:id/read`, `POST /v1/notifications/read-all`) is
+the right MVP shape — added later only if a genuine need for real-time
+in-app delivery shows up. No fabricated Vietnamese tax filing-deadline
+computation logic either — that's a separate, real, compliance-sensitive
+feature this repo has already declined to fabricate before (e-invoice
+providers); this feature ships the infrastructure plus two real triggers
+already available: the existing signup/password-reset emails, retrofit onto
+the new outbox instead of the old direct-send `EmailService`, and a
+genuinely new one — notifying a tenant's `owner` member(s) the first time
+their cumulative revenue crosses the e-invoice threshold
+(`InvoiceService.issueInvoice`, exact one-time-crossing check:
+`requiresEInvoice && cumulativeBefore < threshold`, not "requiresEInvoice is
+true" in general — every subsequent invoice this year stays true too, but
+re-notifying on each one would be spammy).
+
+**A real RLS constraint found while implementing, not assumed in the
+plan**: `notifications`/`email_outbox` are correctly RLS-scoped (real
+business data, unlike real-login's global identity tables) — which means
+`EmailOutboxRelayService`'s sweep can't run one global "SELECT ... FOR
+UPDATE SKIP LOCKED" across every tenant's due rows without ambient tenant
+context. Since `identity.tenants` itself is NOT RLS-scoped (it IS the
+tenant list), the sweep iterates every tenant and opens its own small
+`withTenantTransaction`-scoped batch (`LIMIT 5`) per tenant — a real,
+deliberate trade-off for a pilot-scale program (dozens/hundreds of tenants,
+not planet-scale SaaS), not a hack.
+
+**A second, more subtle Postgres finding, caught by a test, not assumed**:
+`current_setting('app.tenant_id', true)` returns the empty string `''`
+(confirmed directly via `psql`: `BEGIN; SELECT set_config(...); COMMIT;
+SELECT current_setting(...)` → `''`, `IS NULL` → `false`), NOT `NULL`, once
+a pooled connection has PREVIOUSLY run any `SET LOCAL`-using transaction —
+and `''::uuid` is a hard cast ERROR, not a graceful empty-result, unlike
+what this repo's own RLS comments assume ("NULL is never true for any real
+row" describes a connection that has NEVER run a scoped transaction, not a
+reused one). No production code path is affected (everything already always
+wraps RLS-table queries in `withTenantTransaction` first) — this only bit a
+test helper (`extractTokenFromOutbox` in `test/auth.e2e-spec.ts`) that
+queried `email_outbox` without a tenant-scoped wrapper. Fixed there; worth
+knowing for any FUTURE test helper that queries an RLS table directly.
+
+**Email providers**: `IEmailProvider` (`domain/ports/email-provider.port.ts`)
+— `ResendEmailProvider` (the prior `EmailService`'s real `fetch`-based
+Resend call, moved and generalized) and a new, real `SesEmailProvider`
+(`@aws-sdk/client-sesv2`), selected by `EMAIL_PROVIDER=resend|ses` (default
+`resend` — the right default for this stage/volume per current 2026
+research: Resend wins on dev speed under ~500K emails/month, SES wins past
+that or when AWS-native cost matters more). rally already has a working SES
+provider, so this is a real, proven-elsewhere second option, not a guess —
+not live-verified in this session (no real AWS credentials), same
+disclaimer as every other not-live-verified 3rd-party integration here
+(connector-hub's adapters, Google OAuth). `EmailDispatcher` is the ONE place
+the "not configured → `Logger.warn` instead of throw" fallback lives,
+provider-agnostic — same "let key, I will input later" pattern as
+everywhere else in this repo, now working regardless of which provider is
+selected.
+
+**Relay worker**: `src/worker-notifications.ts`, same "separate process
+from the HTTP app" shape as `worker-pdf.ts` (`ts-node`, not `tsx` — same
+documented `emitDecoratorMetadata` reason), registers ONE BullMQ repeatable
+job via `Queue.upsertJobScheduler` (BullMQ v6 moved repeatable scheduling
+off `Queue.add`'s `JobsOptions` onto this dedicated API — found while
+wiring it, not assumed) every 30s, whose processor calls
+`EmailOutboxRelayService.processBatch()`. Backoff/dead-letter numbers (30s
+doubling, capped 30min, dead-letter past 5 attempts) match rally's own
+production-proven `AbstractOutboxRelay` — not reinvented.
+
+Verified: typecheck clean, e2e 70/70 in backend-api (63 pre-existing + 7
+new: `notify()` writes both rows atomically, in-app-only skips the outbox
+row, duplicate `sourceEventId` is a no-op, unread-count/mark-read/mark-all-
+read against real rows, `EmailOutboxRelayService.processBatch()` with a
+stub `IEmailProvider` — success marks `sent`, forced failures bump
+`attempts`/backoff and reach `dead_letter` at 5, plus a new case in
+`invoice-tax.e2e-spec.ts` confirming exactly one notification + one queued
+email on the crossing invoice and none on a third already-over-threshold
+one). Full 3-service sweep: connector-hub 12/12 unaffected; agent-orchestrator
+had 2 unrelated pre-existing failures in `get-sales-summary.e2e-spec.ts`,
+confirmed via direct `psql` query and `git status` (zero uncommitted
+changes there) to be a genuine, narrow time-window flake in that test's own
+"seed orders N hours ago" design — it happened to run within ~2 hours of
+the Vietnam-midnight boundary, nothing to do with this feature. Real manual
+end-to-end smoke test against the live dev server + a real running
+`worker-notifications` process: a real signup produced a real `pending`
+`email_outbox` row, the relay's real 30s sweep picked it up and marked it
+`sent` (confirmed via direct Postgres query, not assumed from logs alone),
+and all 4 new `/v1/notifications*` endpoints round-tripped against a real
+session (list → unread-count 1 → mark read → unread-count 0).
