@@ -873,3 +873,113 @@ reply). Live smoke test against a real Temporal dev server + real
 Anthropic endpoint confirms the 4-tool schema list is still well-formed
 (clean 401 auth failure, not a malformed-request error) — same check
 performed after every tool addition so far.
+
+## Layer B (RAG) for agent-orchestrator — pgvector, Voyage AI, sample content only
+
+Docs Section 5.1 names two retrieval layers for the AI assistant: Layer A
+(the caller's own live business data, via constrained SQL tool-calling —
+done first, 4 tools) and Layer B (general knowledge — tax rules,
+formalization steps, FAQs — via embeddings). Picked as the next module
+after the architecture audit: the most mission-aligned gap, since the
+assistant answering "how do I register a household business" is closer to
+the program's actual point than a 6th connector.
+
+**Why Voyage AI, not OpenAI embeddings**: Anthropic has no embeddings
+endpoint of its own; Voyage AI is Anthropic's own recommended embeddings
+partner. Same "let key, I will input later" pattern as `ANTHROPIC_API_KEY`
+— `VOYAGE_API_KEY`/`VOYAGE_API_BASE_URL`/`VOYAGE_EMBEDDING_MODEL`
+(default `voyage-3.5`, 1024 dimensions) in `env.schema.ts`, `.env.example`,
+`.env`, and CI, same as every other new env var in this repo.
+
+**Why pgvector, not a separate vector DB**: one Postgres to operate, same
+place every other schema in this database already lives, and drizzle-orm
+0.45.2 already has native `vector()` column type + `cosineDistance()` query
+support — no raw SQL needed. Required switching `docker-compose.dev.yml`'s
+Postgres image from `postgres:18` to `pgvector/pgvector:pg18` (same
+Postgres 18 base, extension added) — done carefully: existing data volume
+reused (all pre-existing schemas survived), but the base-image swap left a
+harmless-looking `collation version mismatch` warning (created under
+collation 2.41, OS now provides 2.36) that Postgres itself documents as a
+real correctness risk for indexes/comparisons on text columns if left
+unaddressed — fixed with `ALTER DATABASE solodesk REFRESH COLLATION
+VERSION` + `REINDEX DATABASE solodesk`, not ignored. CI's own Postgres
+service container in `agent-orchestrator-ci.yml` switched the same way.
+
+**`knowledge.chunks`** (migration `0005_add_knowledge_base.sql`) is the
+first table in this database that ISN'T tenant-scoped — shared reference
+content, same "no RLS, non-tenant reference data" shape as backend-api's
+`tax.tax_rules`. `solodesk_agent` gets SELECT only; ingestion
+(`scripts/ingest-knowledge.ts`, `pnpm ingest:knowledge`) writes exclusively
+via `DATABASE_ADMIN_URL`, same admin-only-write discipline as every
+migration in this repo.
+
+**The sample content is deliberately NOT real Vietnamese tax/registration
+law.** This is a household-business formalization program — fabricating
+plausible-sounding regulatory text (specific decree numbers, thresholds,
+fees) and letting it get treated as authoritative would be genuinely
+harmful, not just a scope shortcut. `ingest-knowledge.ts`'s 4 sample
+documents are generic, hedge explicitly, cite no specific figures, and
+carry their own "SAMPLE — not official guidance" disclaimer baked directly
+into both title and content — so the disclaimer survives even if a chunk
+is later quoted out of context. Replace this array with a real, sourced
+corpus before this is ever used for genuine guidance. The system prompt
+was also updated to tell the model to treat `search_knowledge_base`
+results as reference material, not live authoritative data, unlike the
+Layer A tools.
+
+**Mock-mode gets a genuinely different retrieval strategy, not a fake
+stand-in**: `search_knowledge_base` (the real tool) calls Voyage to embed
+the query, then orders `knowledge.chunks` by `cosineDistance`. The
+`MOCK_LLM_RESPONSES` path can't call Voyage either (same "no real 3rd-party
+call in demo mode" reasoning as `ANTHROPIC_API_KEY`), so it uses
+`searchKnowledgeBaseByKeyword` instead — a real, word-level,
+diacritics-stripped keyword search against the same table, no embedding
+call. Two real strategies, same honesty line this repo already draws
+elsewhere (mock the 3rd party, never fake the retrieval itself).
+
+**Bugs found and fixed while building this, in order**:
+1. First attempt at `searchKnowledgeBaseByKeyword` did whole-phrase
+   `ILIKE '%entire user question%'` — would never match real content
+   since a full natural-language question essentially never appears
+   verbatim in reference text. Caught by writing the mock-mode test BEFORE
+   assuming the implementation worked. Rewritten to word-level matching
+   (any query word present, scored by match count).
+2. That rewrite needed diacritics-insensitive matching (Vietnamese typed
+   without accents against accented reference content, or vice versa) —
+   the exact same problem already solved once for the other mock branches'
+   keyword matching. Extracted `stripDiacritics()` to a shared
+   `src/platform/text.ts` instead of duplicating it, and deleted the
+   now-redundant copy in `run-agent-turn.activity.ts`.
+3. Writing that shared file hit the SAME literal-combining-mark-characters
+   pitfall this repo's history already documents for `stripDiacritics`'s
+   regex — my typed `̀-ͯ` rendered as the literal glyphs again,
+   not the escape sequence. Fixed the same documented way: wrote the file
+   via a Python script with the explicit ASCII escape, verified byte-for-
+   byte correct with a hex dump before trusting it.
+4. Found (unrelated to this task, while reading `get-outstanding-invoices.tool.ts`
+   for a schema reference) the exact same float-money bug the backend-api
+   audit had just fixed, but in agent-orchestrator: `get-outstanding-invoices.tool.ts`
+   and `get-stock-level.tool.ts` both did `Number(a) - Number(b)` display
+   arithmetic instead of exact decimal math. Copied backend-api's
+   `money.ts` helper into this service too (copied, not shared via a
+   package, same YAGNI convention as this service's other platform files)
+   and fixed both sites — a small, cheap, directly-analogous fix, done
+   while already in the neighborhood rather than filed away for later.
+
+**Testing without a real Voyage key**: `test/knowledge-base.e2e-spec.ts`
+tests the pgvector ordering/index/schema plumbing directly via
+`searchByEmbedding()` with hand-supplied vectors (a `searchKnowledgeBase`
+refactor split the embedding call from the vector query specifically for
+this), never calling Voyage — same "not live-verified" precedent as this
+repo's 3rd-party connector adapters. `knowledge.chunks` has no tenant
+column to scope fixtures by, so every test fixture uses a unique per-run
+title marker and is deleted in `afterAll`, avoiding the cross-run
+pollution a shared, non-tenant-scoped table would otherwise accumulate.
+
+Verified: typecheck clean across all 3 services, full e2e suites green
+(backend-api 49/49, connector-hub 12/12, agent-orchestrator 31/31),
+migration 0005 applied against the live dev database, all 5 dev processes
+restarted cleanly after the Postgres image swap. Not yet run: the actual
+ingestion script and a live semantic search, both blocked on a real
+`VOYAGE_API_KEY` — same "let key, I will input later" state as every other
+placeholder credential in this repo.

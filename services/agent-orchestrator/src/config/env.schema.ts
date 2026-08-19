@@ -43,6 +43,14 @@ export const envSchema = z
     // default in a real conversation — model ids change over time and this
     // value is not re-verified by this schema.
     ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5'),
+
+    // Embeddings — Anthropic doesn't offer an embeddings endpoint; Voyage AI
+    // is Anthropic's own recommended embeddings partner. Used only by
+    // search-knowledge-base.tool.ts (Layer B / RAG) and
+    // scripts/ingest-knowledge.ts — never by the SQL-backed Layer A tools.
+    VOYAGE_API_KEY: z.string().min(1, 'Real key entered by the user — see CLAUDE.md. A placeholder value fails every knowledge-base search loudly, not silently.'),
+    VOYAGE_API_BASE_URL: z.string().default('https://api.voyageai.com/v1'),
+    VOYAGE_EMBEDDING_MODEL: z.string().default('voyage-3.5'),
   })
   .refine((env) => !(env.NODE_ENV === 'production' && env.DEV_JWT_PRIVATE_KEY), {
     message: 'DEV_JWT_PRIVATE_KEY must never be set when NODE_ENV=production.',

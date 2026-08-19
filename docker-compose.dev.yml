@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:18
+    # pgvector preinstalled — same Postgres 18 base image, needed for
+    # agent-orchestrator's knowledge-base embeddings (Layer B / RAG).
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_DB: solodesk
       POSTGRES_USER: solodesk_superuser

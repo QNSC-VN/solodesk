@@ -3,6 +3,7 @@ import { db } from '../../../db/client';
 import { invoices } from '../../../db/schema/invoices';
 import { payments } from '../../../db/schema/payments';
 import { withTenantTransaction } from '../../../platform/tenant-db';
+import { subtractMoney } from '../../../platform/money';
 
 export interface GetOutstandingInvoicesInput {
   tenantId: string;
@@ -67,7 +68,7 @@ export async function getOutstandingInvoices(input: GetOutstandingInvoicesInput)
       invoiceNumber: r.invoiceNumber,
       totalAmount: r.totalAmount,
       paidAmount: r.paidAmount,
-      outstandingAmount: (Number(r.totalAmount) - Number(r.paidAmount)).toFixed(2),
+      outstandingAmount: subtractMoney(r.totalAmount, r.paidAmount),
       issuedAt: r.issuedAt.toISOString(),
     }));
 

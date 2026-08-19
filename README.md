@@ -34,8 +34,13 @@ GitHub repo, multiple independently-deployable services.
   boundary from connector-hub's (READ yes, WRITE no, vs connector-hub's
   NONE at all). Four real Layer A tools (`get_sales_summary`,
   `get_stock_level`, `get_outstanding_invoices`, `get_upcoming_bookings`),
-  calling the Anthropic SDK directly — no LiteLLM gateway/Langfuse/RAG
-  yet, an explicit scope decision, see CLAUDE.md.
+  calling the Anthropic SDK directly — no LiteLLM gateway/Langfuse yet, an
+  explicit scope decision, see CLAUDE.md. Layer B (RAG) is real too now:
+  `search_knowledge_base` embeds via Voyage AI (Anthropic's recommended
+  embeddings partner) and does pgvector cosine-similarity search over
+  `knowledge.chunks` — seeded ONLY with clearly-labeled sample/placeholder
+  FAQ content (`scripts/ingest-knowledge.ts`), not a real corpus of
+  Vietnamese tax/registration law, see that script's header comment.
 - Postgres RLS + non-superuser app role in ALL THREE services, done FIRST
   and correctly — read `services/backend-api/db/migrations/0002_provision_app_role.sql`,
   `services/connector-hub/db/migrations/0001_provision_connector_role.sql`,
@@ -57,16 +62,17 @@ Not yet built: `apps/mobile`, `apps/web-*`, `services/ml-analytics`.
 ## Local dev
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # postgres + valkey, shared by all three services
+docker compose -f docker-compose.dev.yml up -d   # postgres (pgvector-enabled) + valkey, shared by all three services
 brew install temporal                            # agent-orchestrator only
 cp services/backend-api/.env.example services/backend-api/.env
 cp services/connector-hub/.env.example services/connector-hub/.env
 cp services/agent-orchestrator/.env.example services/agent-orchestrator/.env
-# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY per each .env.example's comments
+# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY per each .env.example's comments
 pnpm install
 pnpm --filter @solodesk/backend-api db:migrate
 pnpm --filter @solodesk/connector-hub db:migrate
 pnpm --filter @solodesk/agent-orchestrator db:migrate   # AFTER backend-api's — see its 0001 migration
+pnpm --filter @solodesk/agent-orchestrator ingest:knowledge  # seeds sample Layer B knowledge chunks — needs a real VOYAGE_API_KEY
 pnpm --filter @solodesk/backend-api dev          # :3000
 pnpm --filter @solodesk/connector-hub dev        # :3001
 temporal server start-dev                        # separate terminal — :7233 gRPC, :8233 Web UI

@@ -6,3 +6,4 @@ export * from './invoices';
 export * from './payments';
 export * from './bookings';
 export * from './resources';
+export * from './knowledge-chunks';

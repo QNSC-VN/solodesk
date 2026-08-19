@@ -3,6 +3,7 @@ import { db } from '../../../db/client';
 import { skus } from '../../../db/schema/skus';
 import { lots } from '../../../db/schema/lots';
 import { withTenantTransaction } from '../../../platform/tenant-db';
+import { subtractMoney } from '../../../platform/money';
 
 export interface GetStockLevelInput {
   tenantId: string;
@@ -56,7 +57,7 @@ export async function getStockLevel(input: GetStockLevelInput): Promise<GetStock
       .where(and(eq(lots.tenantId, input.tenantId), eq(lots.skuId, sku.id)));
 
     const row = lotRows[0]!;
-    const quantityAvailable = (Number(row.totalOnHand) - Number(row.totalReserved)).toString();
+    const quantityAvailable = subtractMoney(row.totalOnHand, row.totalReserved, 3);
 
     return { found: true, skuCode: sku.skuCode, skuName: sku.name, quantityAvailable };
   });

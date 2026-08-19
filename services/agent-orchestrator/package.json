@@ -14,7 +14,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:test": "NODE_ENV=test tsx src/db/migrate.ts",
-    "mint-dev-token": "tsx scripts/mint-dev-token.ts"
+    "mint-dev-token": "tsx scripts/mint-dev-token.ts",
+    "ingest:knowledge": "tsx scripts/ingest-knowledge.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

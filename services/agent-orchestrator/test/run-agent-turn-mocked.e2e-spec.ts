@@ -18,6 +18,7 @@ beforeAll(() => {
 
 afterAll(async () => {
   delete process.env.MOCK_LLM_RESPONSES;
+  await adminSql`DELETE FROM knowledge.chunks WHERE source = 'e2e-test-fixture'`;
   await adminSql.end();
 });
 
@@ -60,6 +61,20 @@ describe('runAgentTurn with MOCK_LLM_RESPONSES=true — real Postgres, mocked LL
     expect(result.assistantMessage).toMatch(/^\[MOCK\]/);
     expect(result.assistantMessage).toContain('Phong Deluxe');
     expect(result.assistantMessage).toContain('Chi Lan');
+  });
+
+  it('a formalization/policy question calls the REAL keyword-based knowledge search, not the embedding path', async () => {
+    const tenantId = await seedTenant('Agent Mock Test Tenant Knowledge');
+    const zeroVector = `[${new Array(1024).fill(0).join(',')}]`;
+    await adminSql`
+      INSERT INTO knowledge.chunks (title, content, source, embedding)
+      VALUES ('KB-MOCK-TEST đăng ký hộ kinh doanh', 'Thủ tục đăng ký hộ kinh doanh gồm chuẩn bị giấy tờ và nộp hồ sơ.', 'e2e-test-fixture', ${zeroVector}::vector)
+    `;
+
+    const result = await runAgentTurn({ tenantId, history: [], userMessage: 'Thu tuc dang ky ho kinh doanh nhu the nao?' });
+
+    expect(result.assistantMessage).toMatch(/^\[MOCK\]/);
+    expect(result.assistantMessage).toContain('KB-MOCK-TEST đăng ký hộ kinh doanh');
   });
 
   it('a generic question falls back to the real sales summary', async () => {

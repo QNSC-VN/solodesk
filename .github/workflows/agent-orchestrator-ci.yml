@@ -48,9 +48,16 @@ jobs:
       # test/agent-conversation-workflow.e2e-spec.ts's header comment).
       ANTHROPIC_API_KEY: "sk-ant-ci-only-placeholder-never-real"
       ANTHROPIC_MODEL: claude-sonnet-4-5
+      # Same placeholder pattern — no automated test needs a real embedding
+      # call (see get-knowledge-chunks fixture seeding in the e2e spec,
+      # which inserts precomputed vectors directly, bypassing Voyage).
+      VOYAGE_API_KEY: "voyage-ci-only-placeholder-never-real"
+      VOYAGE_API_BASE_URL: https://api.voyageai.com/v1
+      VOYAGE_EMBEDDING_MODEL: voyage-3.5
     services:
       postgres:
-        image: postgres:18
+        # pgvector preinstalled — 0005_add_knowledge_base.sql needs it.
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_DB: solodesk_test
           POSTGRES_USER: solodesk_superuser

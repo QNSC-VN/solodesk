@@ -6,11 +6,15 @@ import { db } from '../src/db/client';
  * Real Postgres, no mocks — `solodesk_agent`'s boundary is READ-ONLY on
  * exactly the tables it's been GRANTed (identity.tenants, sales.orders,
  * catalog.skus, catalog.lots, tax.invoices, payments.payments,
- * booking.bookings, booking.resources — one migration per tool that
- * needed a new table, see 0001/0002/0003/0004), nothing else. Different
- * shape from connector-hub's role-isolation test (which proves ZERO
- * access to backend-api's schemas) — here the point is READ yes, WRITE
- * no, and no access BEYOND the specific tables granted.
+ * booking.bookings, booking.resources, knowledge.chunks — one migration
+ * per tool that needed a new table, see 0001/0002/0003/0004/0005), nothing
+ * else. Different shape from connector-hub's role-isolation test (which
+ * proves ZERO access to backend-api's schemas) — here the point is READ
+ * yes, WRITE no, and no access BEYOND the specific tables granted.
+ * knowledge.chunks is the one exception to "every granted table is tenant
+ * business data" — it's shared reference content (see 0005's header
+ * comment), but the READ-yes/WRITE-no boundary is identical: ingestion
+ * writes only via DATABASE_ADMIN_URL, never this role.
  */
 describe('solodesk_agent role isolation — real Postgres, no mocks', () => {
   it('CAN read every table its tools actually query', async () => {
@@ -22,6 +26,7 @@ describe('solodesk_agent role isolation — real Postgres, no mocks', () => {
     await expect(db.execute(sql`SELECT * FROM payments.payments LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM booking.bookings LIMIT 1`)).resolves.toBeDefined();
     await expect(db.execute(sql`SELECT * FROM booking.resources LIMIT 1`)).resolves.toBeDefined();
+    await expect(db.execute(sql`SELECT * FROM knowledge.chunks LIMIT 1`)).resolves.toBeDefined();
   });
 
   it('CANNOT insert into sales.orders — read-only, by design', async () => {
@@ -46,6 +51,13 @@ describe('solodesk_agent role isolation — real Postgres, no mocks', () => {
   it('CANNOT insert into booking.bookings — read-only, by design', async () => {
     await expect(
       db.execute(sql`INSERT INTO booking.bookings (tenant_id, resource_id, customer_name, starts_at, ends_at) VALUES (gen_random_uuid(), gen_random_uuid(), 'X', now(), now() + interval '1 hour')`),
+    ).rejects.toThrow();
+  });
+
+  it('CANNOT insert into knowledge.chunks — ingestion is admin-role only, by design', async () => {
+    const zeroVector = `[${new Array(1024).fill(0).join(',')}]`;
+    await expect(
+      db.execute(sql`INSERT INTO knowledge.chunks (title, content, source, embedding) VALUES ('X', 'X', 'X', ${zeroVector}::vector)`),
     ).rejects.toThrow();
   });
 
