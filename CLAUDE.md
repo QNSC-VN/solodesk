@@ -758,3 +758,43 @@ message → real HTTPS round-trip to Anthropic's actual production endpoint
 → clean real 401 (proving the entire pipeline, not just isolated pieces) →
 confirmed the retry-classification fix by observing exactly one API call
 on the second attempt where the first had made three.
+
+---
+
+# `scripts/demo-e2e.sh` — the full cross-service story, one command
+
+Starts all three services (backend-api, connector-hub, a real `temporal
+server start-dev`, agent-orchestrator's worker + client) and walks through
+onboarding → catalog → procurement → sales → invoicing → payment →
+traceability → booking → AI assistant, entirely with real curl calls
+against real running servers. Run it with `./scripts/demo-e2e.sh`; stop
+everything with `./scripts/demo-e2e.sh --stop`. Servers are left running
+after a successful run so a live demo can keep exploring (Swagger docs,
+Temporal Web UI) past the scripted part.
+
+**Exactly two things are mocked, nothing else**: the SePay bank transfer
+itself (a hand-built webhook payload stands in for a real bank/SePay
+account — real dedup, real invoice-number extraction, real forward into
+`payment-reconcile` all still happen), and the LLM's language
+understanding (`MOCK_LLM_RESPONSES=true` on the worker — see
+`run-agent-turn.activity.ts`'s `runAgentTurnMocked`, which still calls the
+SAME real tool functions against the SAME real Postgres data; only the
+"which tool to call" step is keyword-matched instead of a real Claude
+call). Every mocked LLM reply is prefixed `[MOCK]`.
+
+**Two real bugs found by actually running this script, not by reading the
+code:**
+- `lsof -ti :PORT1 :PORT2` (space-separated) is not valid multi-port
+  syntax — lsof treats the second `:PORT` as a separate filename argument
+  and errors. Fixed to the correct comma-separated form: `lsof -ti
+  :PORT1,PORT2`.
+- The mocked LLM's keyword matching only recognized ACCENTED Vietnamese
+  ("tồn kho", "hóa đơn"). The demo's own questions, typed in plain ASCII
+  ("Con ton kho...", "Co hoa don..." — extremely common in real usage,
+  not a contrived edge case), silently matched NOTHING and fell through
+  to the wrong default answer every time. Fixed with `stripDiacritics()`
+  (NFD-normalize + strip combining marks, `đ`/`Đ` folded by hand since
+  they don't decompose that way) applied before matching — verified by
+  re-running the exact same script end to end and by a dedicated
+  regression test (`test/run-agent-turn-mocked.e2e-spec.ts`) that would
+  have caught this before it ever reached a real demo.

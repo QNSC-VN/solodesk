@@ -28,11 +28,13 @@ GitHub repo, multiple independently-deployable services.
   Temporal worker (`pnpm worker`, plain script, not NestJS) + a thin
   NestJS HTTP client (`pnpm dev`, starts/signals/queries conversations as
   Temporal workflows). Own Postgres role `solodesk_agent`, SELECT-only on
-  exactly `identity.tenants`/`sales.orders` — a genuinely different
-  security boundary from connector-hub's (READ yes, WRITE no, vs
-  connector-hub's NONE at all). One real Layer A tool
-  (`get_sales_summary`), calling the Anthropic SDK directly — no LiteLLM
-  gateway/Langfuse/RAG yet, an explicit scope decision, see CLAUDE.md.
+  exactly the tables its tools need (`identity.tenants`/`sales.orders`/
+  `catalog.skus`/`catalog.lots`/`tax.invoices`/`payments.payments`) — a
+  genuinely different security boundary from connector-hub's (READ yes,
+  WRITE no, vs connector-hub's NONE at all). Three real Layer A tools
+  (`get_sales_summary`, `get_stock_level`, `get_outstanding_invoices`),
+  calling the Anthropic SDK directly — no LiteLLM gateway/Langfuse/RAG
+  yet, an explicit scope decision, see CLAUDE.md.
 - Postgres RLS + non-superuser app role in ALL THREE services, done FIRST
   and correctly — read `services/backend-api/db/migrations/0002_provision_app_role.sql`,
   `services/connector-hub/db/migrations/0001_provision_connector_role.sql`,
@@ -78,6 +80,17 @@ Run the cross-tenant isolation gate locally before touching anything in
 DATABASE_URL=postgres://solodesk_app:<pw>@localhost:5432/solodesk \
   pnpm --filter @solodesk/backend-api test:e2e
 ```
+
+## Full end-to-end demo
+
+`./scripts/demo-e2e.sh` starts all three services + a real Temporal dev
+server and walks the entire business story — onboarding, catalog,
+procurement, sales, invoicing, payment, traceability, booking, AI
+assistant — as real curl calls against real running servers. Only two
+things are mocked (a hand-built SePay webhook payload instead of a real
+bank transfer, and the LLM's language understanding, not its data — see
+the script's own header comment and CLAUDE.md for exactly what that means
+and why). Stop everything afterward with `./scripts/demo-e2e.sh --stop`.
 
 ## Conventions
 

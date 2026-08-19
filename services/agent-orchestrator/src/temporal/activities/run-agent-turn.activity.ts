@@ -58,6 +58,64 @@ const TOOLS: Record<string, { schema: Anthropic.Tool; handler: (tenantId: string
 const TOOL_SCHEMAS = Object.values(TOOLS).map((t) => t.schema);
 
 /**
+ * DEMO-ONLY escape hatch — active ONLY when `MOCK_LLM_RESPONSES=true`
+ * (never the default). Anthropic is the one 3rd-party dependency this
+ * repo cannot demo without a real paid API key; this mocks ONLY the
+ * language-understanding/generation step, via simple keyword matching —
+ * every tool call it makes is the SAME real function hitting the SAME
+ * real Postgres data as the non-mocked path (`getSalesSummary`/
+ * `getStockLevel`/`getOutstandingInvoices`), never fabricated numbers.
+ * The `[MOCK]` prefix on every response makes it impossible to mistake
+ * for a real model answer. Same "mock the 3rd party, keep everything
+ * inside our own system real" line this repo already drew for
+ * connector-hub's SePay webhook in the demo script (`scripts/demo-e2e.sh`).
+ */
+/**
+ * Vietnamese is very often typed WITHOUT diacritics in practice (phone
+ * keyboards, quick typing) — found by actually running the demo script
+ * with plain-ASCII Vietnamese questions ("Con ton kho..."), which the
+ * keyword matcher's accented-only patterns silently failed to recognize,
+ * falling through to the wrong default answer every time. NFD-normalizing
+ * and stripping combining marks handles every accented vowel generically;
+ * `đ`/`Đ` don't decompose that way (they're distinct letters, not a
+ * base+diacritic pair) so they're folded by hand.
+ */
+function stripDiacritics(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+}
+
+async function runAgentTurnMocked(input: RunAgentTurnInput): Promise<RunAgentTurnResult> {
+  const message = stripDiacritics(input.userMessage).toLowerCase();
+
+  if (/(ton kho|stock|sku)/.test(message)) {
+    const skuCodeMatch = input.userMessage.match(/[A-Za-z]+-[A-Za-z0-9-]+/);
+    const skuCode = skuCodeMatch ? skuCodeMatch[0] : 'SKU-001';
+    const result = await getStockLevel({ tenantId: input.tenantId, skuCode });
+    return {
+      assistantMessage: result.found
+        ? `[MOCK] SKU ${result.skuCode} (${result.skuName}): còn ${result.quantityAvailable} có thể bán.`
+        : `[MOCK] Không tìm thấy SKU "${skuCode}".`,
+    };
+  }
+
+  if (/(hoa don|invoice|unpaid|chua thanh toan)/.test(message)) {
+    const result = await getOutstandingInvoices({ tenantId: input.tenantId });
+    if (result.count === 0) {
+      return { assistantMessage: '[MOCK] Không có hóa đơn nào còn nợ — tất cả đã thanh toán đủ.' };
+    }
+    const lines = result.invoices.map((i) => `${i.invoiceNumber} (còn ${i.outstandingAmount}đ)`).join(', ');
+    return { assistantMessage: `[MOCK] Có ${result.count} hóa đơn chưa thanh toán đủ: ${lines}.` };
+  }
+
+  const result = await getSalesSummary({ tenantId: input.tenantId });
+  return { assistantMessage: `[MOCK] Hôm nay (${result.date}) có ${result.orderCount} đơn hàng, tổng ${result.totalAmount}đ.` };
+}
+
+/**
  * Found by actually running this against Anthropic's real endpoint with an
  * invalid key: Temporal's default Activity retry policy retried a 401
  * three times before giving up, each one a wasted real API call. Same
@@ -92,6 +150,10 @@ async function createMessage(client: Anthropic, params: Anthropic.MessageCreateP
  * tool calls, not a hypothetical concern.
  */
 export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTurnResult> {
+  if (process.env.MOCK_LLM_RESPONSES === 'true') {
+    return runAgentTurnMocked(input);
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     // A config error, not a transient one — retrying it 3 times is exactly
