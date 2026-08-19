@@ -1879,3 +1879,125 @@ tokens (same technique as the original `web-accounting` smoke test) and
 confirmed both pages render the real invoice number/total/e-invoice pill
 and the real SKU code/quantity/active-status pill; confirmed all 3
 sidebar nav links (Đơn hàng/Hóa đơn/Kho hàng) render correctly.
+
+## Returns — full-order reversal spanning order + invoice + payment + stock
+
+Picked as the next module, confirmed with the user from a short list
+(returns/exchanges, forgot-password, a general business audit log,
+`web-b2g-dashboard`). Closes docs Section 11's one-line pre-pilot risk
+item — *"Returns/exchanges linked back to the original order"* — which had
+zero further detail in either doc (confirmed by grep: no "hoàn trả"/"đổi
+trả"/"hoàn tiền" hits in the Vietnamese doc), so the scope below was
+decided deliberately, not assumed from a spec.
+
+**Scope, decided deliberately**: full-order returns only, no partial-line
+returns (invoices have no line-item structure of their own to reverse
+partially — one row per order with subtotal/tax/total, not per-line — a
+partial return would need a whole new invoice-line modeling layer this
+codebase doesn't have), and no separate "exchange" concept (a return
+followed by a brand-new order for the replacement item achieves the same
+real operational outcome; a formal linked-exchange record is a UX nicety
+on top of two already-real primitives — YAGNI until a real need shows up).
+
+**`sales.returns`** (new table, migration `0014_returns_schema.sql`):
+`order_id`/`invoice_id` FKs, `reason` (free text — no closed taxonomy in
+either doc), `refund_amount` (may be `0` — an invoiced-but-never-paid
+order refunds nothing), `refund_method` (nullable, only meaningful when
+`refund_amount > 0`), `status` (`'completed'` only — v1 has no
+partial/pending return workflow, a return either fully completes in one
+transaction or the whole thing rolls back).
+
+**`payments.payments` gained a `type: 'payment' | 'refund'` column** — the
+minimal real change needed to keep `PaymentService.getPaymentSummary`
+accurate after a return. A refund is recorded as a normal-shaped payment
+row with `type: 'refund'`; `sumByInvoice` nets refunds as negative
+(`SUM(CASE WHEN type='refund' THEN -amount ELSE amount END)`) instead of
+summing everything as a plain payment. This was the deliberate
+alternative to putting `refundAmount` only on the `Return` row, which
+would have left `paidAmount` still showing the ORIGINAL amount and
+`isFullyPaid: true` on a returned/cancelled invoice — factually wrong,
+since the customer got their money back and nothing is actually settled.
+With the `type` column, a returned invoice's summary correctly shows
+`paidAmount: '0.00'`, `outstandingAmount: <the original total>`,
+`isFullyPaid: false` — the summary is honest that nothing is on record as
+paid, not a false "fully paid." (Existing rows default to `'payment'`,
+backward compatible.)
+
+**Two pre-existing gaps closed alongside this feature, both real, both
+found by reading the actual code, not assumed**:
+- `PaymentService.recordPayment` had no positive-only validation
+  (`@IsNumberString()` alone doesn't reject a leading `-`) — added an
+  explicit `compareMoney(input.amount, '0') <= 0` rejection
+  (`ConflictException('INVALID_AMOUNT', ...)`), exact-decimal money math,
+  not a DTO regex fight.
+- `OrderStatus`/`InvoiceStatus` both already declared a `'cancelled'`
+  value, but neither `IOrderRepository` nor `IInvoiceRepository` had an
+  `updateStatus` method — `'cancelled'` had been unreachable dead code
+  until returns needed to actually set it. Both gained `updateStatus(id,
+  tenantId, status, tx?)`, same optional-trailing-`tx` convention as every
+  other mutating repository method in this codebase. `OrderStatus` also
+  gained `'returned'`, distinct from `'cancelled'` (different real-world
+  meaning: cancelled-before-fulfillment vs. returned-after-fulfillment).
+
+**`ILotRepository.creditReturn`** — same "single statement + a
+`stock_movements` insert in the same call" shape as `receive`, but
+deliberately NOT the guarded `atomicUpdate` pattern every consuming
+mutation uses: crediting stock back can never oversell, so no guard is
+needed. Adds `'return'` to `StockMovementType`, a new precise label
+rather than overloading the existing-but-still-unused `'adjustment'`.
+
+**`ReturnService.returnOrder`** is the same repository-to-repository
+composition shape as `OrderService.placeOrder`/`InvoiceService
+.issueInvoice`: one `withTenantTransaction` + `withIdempotency` inside it,
+injecting `ORDER_REPOSITORY`/`INVOICE_REPOSITORY`/`LOT_REPOSITORY`/
+`PAYMENT_REPOSITORY` directly (not through their services) so every write
+— stock credit per order line, the refund payment row, the order/invoice
+status flips, the return record itself — shares one transaction. Order
+must be `'confirmed'` (`ConflictException('ORDER_NOT_RETURNABLE', ...)`
+otherwise) and must have a non-cancelled invoice
+(`ConflictException('NO_INVOICE_TO_RETURN', ...)` otherwise). If the
+invoice has a paid amount outstanding (net of any prior refund, via the
+same `sumByInvoice`), `refundMethod` is required
+(`ConflictException('REFUND_METHOD_REQUIRED', ...)` if omitted) — staff
+must say how the money is physically going back.
+
+**Newly required module exports** (previously only the *services* were
+exported): `ORDER_REPOSITORY` from `SalesOrderModule`, `INVOICE_REPOSITORY`
+from `InvoicingTaxModule`, `PAYMENT_REPOSITORY` from
+`PaymentReconcileModule` — same reasoning as `CatalogInventoryModule`
+already exporting `LOT_REPOSITORY`/`SKU_REPOSITORY` for `sales-order`'s
+own cross-aggregate transaction.
+
+Verified: typecheck clean across all 3 services (connector-hub/
+agent-orchestrator untouched by this feature, confirmed clean rather than
+assumed). `test/returns.e2e-spec.ts` (real Postgres, no mocks): a full
+return on a paid invoice credits stock back to the exact quantity sold,
+sets order `'returned'`/invoice `'cancelled'`, records a `type: 'refund'`
+payment equal to what was paid, and confirms `getPaymentSummary` reflects
+the honest post-return state described above (not a false
+`isFullyPaid: true`); a return on an unpaid order refunds `0` and records
+no refund row; a return owing money back but omitting `refundMethod` is
+rejected; returning an already-returned order is rejected; returning an
+order with no invoice yet is rejected; a same-key retry replays the
+cached return without double-crediting stock (confirmed stock lands at
+exactly the original quantity, not credited twice); a genuinely new
+request (different key) on an already-returned order is still correctly
+rejected. `payment-reconcile.e2e-spec.ts` extended for the new
+negative/zero-amount rejection. Full backend-api e2e suite 80/80.
+
+Real manual end-to-end smoke test against the live dev server, confirmed
+via direct Postgres queries (not assumed from the API response alone):
+placed a real order (2 units, lot stock 10→8), issued a real invoice,
+recorded a real full cash payment, then called `POST /v1/returns` —
+confirmed `catalog.lots.quantity_on_hand` back to `10.000`,
+`sales.orders.status = 'returned'`, `tax.invoices.status = 'cancelled'`,
+both a real `type: 'payment'` and a real `type: 'refund'` row in
+`payments.payments` (same amount, same method), and a clean
+`receipt → consumption → return` audit trail in
+`catalog.stock_movements` for the lot.
+
+**Deliberately not built in this pass**: no `web-accounting` UI for
+returns — staff can only reach this via the raw API today, same "backend
+first, prove the shape, wire a frontend once one exists to extend" cut
+this repo has made before. `web-accounting`'s existing `DashboardShell`/
+`DataTable` components are the natural fit for a returns page later.

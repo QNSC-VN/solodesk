@@ -12,7 +12,12 @@ GitHub repo, multiple independently-deployable services.
   `docs/ARCHITECTURE.md` Section 17.2): `identity-tenant`,
   `catalog-inventory`, `sales-order`, `invoicing-tax`, `payment-reconcile`,
   `booking-resource`, `procurement`, `traceability` — the full module list
-  named in Section 8. Background jobs (docs' named use case — "PDF invoice
+  named in Section 8 — plus a 9th, `returns`, closing Section 11's
+  "returns/exchanges linked back to the original order" pre-pilot gap:
+  `POST /v1/returns` reverses a full, already-invoiced order (order status,
+  invoice status, stock, and any paid amount) in one transaction —
+  full-order only, no partial-line returns/exchanges (see CLAUDE.md's
+  "Returns" section for why). Background jobs (docs' named use case — "PDF invoice
   generation... Valkey is already in the stack... BullMQ works unchanged")
   are real too: `POST /v1/invoices/:id/pdf` enqueues a real BullMQ job,
   processed by a separate worker process (`pnpm worker:pdf`, same
