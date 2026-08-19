@@ -447,3 +447,126 @@ Conventional commits. New env var → `src/config/env.schema.ts` **and**
 exists) `infra/live/*` — same rule as rally, same reason: a var real in three
 places and forgotten in the fourth fails silently in exactly the one place
 nobody checked.
+
+---
+
+# `services/connector-hub` — separate deployable, everything above is `backend-api`
+
+Second real service in this repo. Everything in this section is
+`services/connector-hub/*`, not `backend-api` — same repo conventions
+(Fastify, Drizzle, hand-written migrations, RLS + `SET LOCAL app.tenant_id`,
+`@qnsc-vn/identity` JWT auth reused unchanged) copy-pasted rather than
+shared via an internal package (Section 20.6 YAGNI — two call sites don't
+earn a `@solodesk/platform-toolkit` yet). Local dev: `PORT=3001`,
+`pnpm --filter @solodesk/connector-hub dev`, its own
+`pnpm --filter @solodesk/connector-hub mint-dev-token <tenantId>` (same
+mechanism as backend-api's, same JWT keypair — copy the exact
+`JWT_PUBLIC_KEY`/`DEV_JWT_PRIVATE_KEY` values from `backend-api/.env` into
+`connector-hub/.env`, one identity provider across services).
+
+## Same Postgres database, separate role, separate schemas — the security boundary made real
+
+Docs Section 3's stated reason connector-hub must be a separate deployable:
+"security boundary — only this component touches the credential vault and
+calls out to the internet." This is enforced at the DB level, not just by
+running as a different process:
+
+- **`solodesk_connector` is a DIFFERENT role from backend-api's
+  `solodesk_app`** (`db/migrations/0001_provision_connector_role.sql`,
+  same NOSUPERUSER/NOBYPASSRLS provisioning pattern as backend-api's
+  `0002_provision_app_role.sql`), GRANTed only on its OWN schemas
+  (`vault`, `sync`) — never `identity`/`catalog`/`sales`/`tax`/`payments`/
+  `booking`/`procurement`/`traceability`. `test/role-isolation.e2e-spec.ts`
+  proves this for real: `solodesk_connector` cannot `SELECT` from
+  `identity.tenants` even when it exists in the same database.
+- **No cross-schema foreign keys into backend-api's tables.** `tenant_id`
+  columns in `vault.*`/`sync.*` are plain `uuid`, not FKs — two
+  independently-deployable services referencing each other's IDs without a
+  DB-level FK is the normal, correct shape once you've committed to
+  separate deployables; a cross-schema FK would silently recreate the
+  coupling the split is supposed to remove.
+- **Same `public.schema_migrations` ledger table, both services' migrators
+  write to it** — safe because each service's migration filenames are
+  distinct exact strings (backend-api's `0001_init_identity_schema.sql` vs
+  connector-hub's `0001_provision_connector_role.sql`); the primary key is
+  the literal filename, not a shared sequence-number space. Keep it that
+  way — never let both services' migrations dirs contain the identically-
+  named file.
+
+## Vault — encryption, and the two tables with NO RLS on purpose
+
+- **`vault.credentials`**: AES-256-GCM (`platform/crypto/encryption.service.ts`),
+  fresh random IV per encryption call, ciphertext/iv/authTag stored as
+  separate `bytea` columns. `VaultService.setCredentials` is the ONLY path
+  plaintext ever reaches disk-bound code, and it always encrypts before
+  the repository sees anything. `getDecryptedPayload` is the only path
+  back to plaintext, and it's for connector adapters to call internally —
+  no HTTP endpoint ever returns a decrypted payload, only metadata
+  (provider/isActive/updatedAt), matching how a real secrets vault behaves
+  (write-only from outside). Setting new credentials for a tenant+provider
+  UPSERTS (`ON CONFLICT (tenant_id, provider) DO UPDATE`) rather than
+  versioning like `procurement.negotiated_prices` — a rotated/revoked API
+  key has no legitimate reason to be replayed against a past record, unlike
+  a price a past invoice snapshotted.
+- **`vault.webhook_tokens` has NO RLS — deliberately, same "narrow,
+  public-lookup-safe projection" shape as backend-api's
+  `traceability.lot_traces`.** An inbound webhook (SePay etc.) arrives with
+  no SoloDesk JWT at all; this table's only job is resolving an unguessable
+  `token` (the URL segment a tenant configures in a provider's dashboard)
+  to a `(tenant_id, provider)` pair so the handler can `runWithTenant()`
+  and query `vault.credentials` normally afterward. It holds NO secret
+  material — knowing a token only reveals which tenant+provider it maps
+  to, never a credential. `VaultService.getOrCreateWebhookToken` is
+  idempotent (same token every call for a given tenant+provider, never a
+  second row).
+- **`sync.webhook_events` dedups on `UNIQUE (provider, provider_event_id)`**
+  (docs Section 7) — `WebhookIntakeService.recordEvent` is generic across
+  every provider, `INSERT ... ON CONFLICT DO NOTHING` same idempotency
+  shape as backend-api's `platform/idempotency.ts`. Verified under real
+  concurrency in `test/webhook-dedup.e2e-spec.ts`: 3 truly concurrent
+  deliveries of the identical event resolve to exactly one stored row.
+
+## Resilience layer (`platform/resilience/*`) — bulkhead per provider
+
+- **`connector-http.ts`**: every outbound call goes through `connectorFetch`
+  — a ~10s client-level timeout (docs Section 5.4: "a hung call must not
+  sit inside the outer budget unnoticed") and classifies the failure as
+  `RetryableConnectorError` (network/timeout, 5xx, 429) or
+  `NonRetryableConnectorError` (other 4xx) — never a bare `Error`.
+- **`connector-policy.ts`**: one cockatiel retry+circuit-breaker policy
+  instance PER PROVIDER, cached in a module-level `Map` so a breaker's
+  open/closed state actually persists across calls. This is the bulkhead
+  docs Section 5.4 asks for — a degraded Shopee must never trip the
+  breaker (or exhaust the retry budget) for GHN or SePay. Every adapter
+  method wraps its real call in `callWithResilience(provider, fn)`.
+
+## Three reference connectors, real API shapes, NOT live-verified
+
+Scope decision (recorded here, not silently made): building real,
+untestable-without-keys integration logic for all 11+ providers docs
+Section 8 lists risked confidently-wrong code across many at once. Built
+for real: **SePay** (VietQR — pull API in `sepay.adapter.ts` + inbound
+webhook in `sepay-webhook.controller.ts`, the two-factor token+secret
+resolution described above), **GHN** (shipping — order create/track,
+`Token`/`ShopId` header auth), **Shopee** (marketplace — Open Platform v2
+HMAC-SHA256 request signing). Every method's field/endpoint shape matches
+each provider's public docs as accurately as training knowledge allows,
+but NONE of the three has been exercised against a live account — that
+needs the user's real keys, entered via `POST /v1/vault/:provider/credentials`,
+then confirmed via `POST /v1/connectors/:provider/verify` (a real API call,
+not a format check). The remaining providers (`stub-connectors.ts`:
+TikTok Shop, Lazada, GHTK, ViettelPost, MISA meInvoice, Viettel S-Invoice,
+VNPT Invoice, Booking.com, Agoda, national-free-platform) throw a clear
+not-implemented error rather than fabricate signing/API logic — promote
+one by moving it to its own `connectors/<provider>/` folder following
+`sepay.adapter.ts`'s shape.
+
+## Explicitly NOT done yet — the next real step
+
+`SepayWebhookController` stops at "verified, deduped, normalized event
+stored in `sync.webhook_events`." It does NOT forward the payment event to
+backend-api's `payment-reconcile` module — that needs either an
+authenticated service-to-service HTTP call or SNS/SQS (docs Section 6,
+once that event infra exists), a real but separately-scoped feature, not
+built here. Don't assume a SePay webhook currently reaches `POST
+/v1/payments` in backend-api — it doesn't yet.

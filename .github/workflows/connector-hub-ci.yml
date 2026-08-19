@@ -1,0 +1,109 @@
+name: connector-hub CI
+
+# Reuses QNSC-VN/qnsc-ci composite actions unchanged — same convention as
+# backend-api-ci.yml (docs Section 17.3).
+
+on:
+  pull_request:
+    paths:
+      - "services/connector-hub/**"
+      - ".github/workflows/connector-hub-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/connector-hub/**"
+
+env:
+  QNSC_CI_REF: main # pin to a released tag once qnsc-ci cuts one
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REDIS_URL: redis://localhost:6379
+      JWT_ISSUER: solodesk
+      JWT_AUDIENCE: solodesk-api
+      # 32 raw bytes, base64 — CI-only, never the real deployed key.
+      VAULT_MASTER_KEY: "3rHqZ0m8xQKp1nJf6vY9Ldc4Tz2Rw5Xe8Uq0BaHnMg="
+      SEPAY_API_BASE_URL: https://my.sepay.vn/userapi
+      GHN_API_BASE_URL: https://online-gateway.ghn.vn/shiip/public-api
+      SHOPEE_API_BASE_URL: https://partner.shopeemobile.com
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: solodesk_test
+          POSTGRES_USER: solodesk_superuser
+          POSTGRES_PASSWORD: ci_only_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U solodesk_superuser -d solodesk_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      valkey:
+        image: valkey/valkey:8
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node + pnpm
+        uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@${{ env.QNSC_CI_REF }}
+        with:
+          node-version: "24"
+
+      - name: Generate ephemeral test JWT keypair
+        id: jwt-keys
+        run: |
+          node -e "
+            const { generateKeyPairSync } = require('crypto');
+            const { publicKey, privateKey } = generateKeyPairSync('ec', {
+              namedCurve: 'P-256',
+              publicKeyEncoding: { type: 'spki', format: 'pem' },
+              privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+            });
+            const fs = require('fs');
+            fs.writeFileSync(process.env.GITHUB_ENV, 'JWT_PUBLIC_KEY<<EOF\n' + publicKey + 'EOF\n', { flag: 'a' });
+            fs.writeFileSync(process.env.GITHUB_ENV, 'DEV_JWT_PRIVATE_KEY<<EOF\n' + privateKey + 'EOF\n', { flag: 'a' });
+          "
+
+      - name: Run migrations + connector-role safety gate (test DB)
+        working-directory: services/connector-hub
+        env:
+          DATABASE_ADMIN_URL: postgres://solodesk_superuser:ci_only_password@localhost:5432/solodesk_test
+          SOLODESK_CONNECTOR_ROLE_PASSWORD: ci_only_connector_password
+        run: pnpm db:migrate:test
+
+      - name: Lint
+        run: pnpm --filter @solodesk/connector-hub lint
+
+      - name: Typecheck
+        run: pnpm --filter @solodesk/connector-hub typecheck
+
+      - name: Unit tests
+        run: pnpm --filter @solodesk/connector-hub test
+
+      - name: E2E tests (vault encryption, webhook dedup, role isolation)
+        working-directory: services/connector-hub
+        env:
+          DATABASE_URL: postgres://solodesk_connector:ci_only_connector_password@localhost:5432/solodesk_test
+        run: pnpm test:e2e
+
+      - name: Scan secrets
+        uses: QNSC-VN/qnsc-ci/actions/scan-secrets@${{ env.QNSC_CI_REF }}
+
+      - name: Validate OpenAPI contract
+        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@${{ env.QNSC_CI_REF }}
+        with:
+          working-directory: services/connector-hub
+
+  # build-push-ecr / run-db-migration (prod) / ecs-run-task / verify-ecs-deploy /
+  # post-deploy-health-check / attest-image / notify-deploy — same deliberate
+  # omission as backend-api-ci.yml (Mục 20.6 YAGNI), follow-on deploy.yml once
+  # there's something worth shipping.

@@ -5,32 +5,50 @@ Multi-tenant SaaS platform for the Gia Lai Kế nghiệp số program — see
 the full solution architecture. This repo is the monorepo (Section 8): one
 GitHub repo, multiple independently-deployable services.
 
-## Sprint 0 — what exists right now
+## What exists right now
 
-- `services/backend-api` — NestJS + Fastify + Drizzle. One real module,
-  `identity-tenant`, built as the reference hexagonal skeleton (copied from
-  `rally`'s pattern, see `docs/ARCHITECTURE.md` Section 17.2) every future
-  module copies.
-- Postgres RLS + non-superuser app role, done FIRST and correctly — read
-  `services/backend-api/db/migrations/0002_provision_app_role.sql` before
-  adding any tenant-scoped table.
-- The cross-tenant leak test (`services/backend-api/test/tenant-isolation.e2e-spec.ts`)
-  is the one test in this repo that must never be weakened to make it pass.
+- `services/backend-api` — NestJS + Fastify + Drizzle. Eight domain
+  modules, each the hexagonal skeleton (copied from `rally`'s pattern, see
+  `docs/ARCHITECTURE.md` Section 17.2): `identity-tenant`,
+  `catalog-inventory`, `sales-order`, `invoicing-tax`, `payment-reconcile`,
+  `booking-resource`, `procurement`, `traceability` — the full module list
+  named in Section 8.
+- `services/connector-hub` — NestJS + Fastify + Drizzle, a SEPARATE
+  deployable (own Postgres role `solodesk_connector`, GRANTed only on its
+  own `vault`/`sync` schemas — see `CLAUDE.md`'s connector-hub section for
+  the security-boundary rationale). Credential vault (AES-256-GCM at
+  rest), webhook intake with dedup, resilience layer (circuit breaker +
+  retry classification, per-provider bulkhead). Three reference connectors
+  with real (not live-verified) API shapes: SePay VietQR, GHN, Shopee. The
+  remaining providers Section 8 lists (TikTok Shop, Lazada, GHTK,
+  ViettelPost, MISA meInvoice, Viettel S-Invoice, VNPT Invoice,
+  Booking.com, Agoda, national-free-platform) are scaffolded stubs, not
+  fabricated integrations — see `stub-connectors.ts`.
+- Postgres RLS + non-superuser app role in BOTH services, done FIRST and
+  correctly — read `services/backend-api/db/migrations/0002_provision_app_role.sql`
+  and `services/connector-hub/db/migrations/0001_provision_connector_role.sql`
+  before adding any tenant-scoped table in either service.
+- The cross-tenant leak tests (`services/backend-api/test/tenant-isolation.e2e-spec.ts`,
+  `services/connector-hub/test/role-isolation.e2e-spec.ts`) must never be
+  weakened to make them pass.
 
-Not yet built: `apps/mobile`, `apps/web-*`, `services/connector-hub`,
-`services/agent-orchestrator`, `services/ml-analytics`. Sprint 1 per the
-architecture docs' phased rollout (Section 10), gated on the two open business
-decisions in Section 13 (LLM data residency, partner/app-store timelines).
+Not yet built: `apps/mobile`, `apps/web-*`, `services/agent-orchestrator`,
+`services/ml-analytics`. Also not yet done: wiring connector-hub's SePay
+webhook intake forward into backend-api's `payment-reconcile` (needs a
+service-to-service call or SNS/SQS, docs Section 6) — see CLAUDE.md.
 
 ## Local dev
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # postgres + valkey
+docker compose -f docker-compose.dev.yml up -d   # postgres + valkey, shared by both services
 cp services/backend-api/.env.example services/backend-api/.env
-# fill in DATABASE_ADMIN_URL / SOLODESK_APP_ROLE_PASSWORD from docker-compose.dev.yml
+cp services/connector-hub/.env.example services/connector-hub/.env
+# fill in DATABASE_ADMIN_URL / role passwords / VAULT_MASTER_KEY per each .env.example's comments
 pnpm install
-pnpm db:migrate
-pnpm --filter @solodesk/backend-api dev
+pnpm --filter @solodesk/backend-api db:migrate
+pnpm --filter @solodesk/connector-hub db:migrate
+pnpm --filter @solodesk/backend-api dev      # :3000
+pnpm --filter @solodesk/connector-hub dev    # :3001
 ```
 
 Run the cross-tenant isolation gate locally before touching anything in
