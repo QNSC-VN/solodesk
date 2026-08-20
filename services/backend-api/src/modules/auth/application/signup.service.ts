@@ -35,12 +35,14 @@ function rawToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
+/** Points at THIS service's own API route — no frontend page renders it, clicking the link just calls backend-api directly. */
 function verifyEmailUrl(token: string): string {
   return `${process.env.APP_PUBLIC_URL ?? 'http://localhost:3000'}/v1/auth/verify-email?token=${token}`;
 }
 
+/** Points at web-accounting's real `/reset-password` frontend page — a DIFFERENT origin than verifyEmailUrl's, deliberately not the same env var (see env.schema.ts's comment). */
 function resetPasswordUrl(token: string): string {
-  return `${process.env.APP_PUBLIC_URL ?? 'http://localhost:3000'}/reset-password?token=${token}`;
+  return `${process.env.WEB_ACCOUNTING_PUBLIC_URL ?? 'http://localhost:3010'}/reset-password?token=${token}`;
 }
 
 /**

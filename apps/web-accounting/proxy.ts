@@ -33,7 +33,7 @@ function clearSessionCookies(response: NextResponse): void {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith("/login")) {
+  if (pathname.startsWith("/login") || pathname.startsWith("/forgot-password") || pathname.startsWith("/reset-password")) {
     return NextResponse.next();
   }
 

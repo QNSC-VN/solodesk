@@ -34,6 +34,19 @@ export const envSchema = z.object({
   DEV_JWT_PRIVATE_KEY: z.string().optional(),
   // Real login — Google Sign-In (self-serve signup/login).
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1, 'Google Cloud Console OAuth client id — expected id_token audience'),
+  // Real login (src/modules/auth/application/signup.service.ts) — TWO
+  // different base URLs for two different emailed links, deliberately not
+  // one shared var: the verify-email link points to THIS service's own
+  // `/v1/auth/verify-email` route (no frontend page renders it, clicking it
+  // just calls the API directly), while the reset-password link points to
+  // web-accounting's `/reset-password` page (a real frontend route, this
+  // service has no page there at all) — found as a real bug (both were
+  // silently sharing one undeclared `APP_PUBLIC_URL` env var with a
+  // localhost:3000 fallback, so the emailed reset link pointed at
+  // backend-api's own port instead of web-accounting's :3010) while
+  // building the forgot/reset-password pages.
+  APP_PUBLIC_URL: z.string().default('http://localhost:3000'),
+  WEB_ACCOUNTING_PUBLIC_URL: z.string().default('http://localhost:3010'),
   // "Let key, I will input later": unset in local dev/test, EmailDispatcher
   // logs the email instead of sending it — see that service's own comment.
   RESEND_API_KEY: z.string().optional(),

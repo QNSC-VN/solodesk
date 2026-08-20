@@ -85,3 +85,31 @@ export async function logout(accessToken: string): Promise<void> {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
+
+/**
+ * Always returns the same generic outcome regardless of whether the email
+ * exists (backend-api's own no-email-enumeration design — see
+ * auth.controller.ts) — the only thing worth distinguishing on the caller's
+ * side is a real 429 (rate limited), which doesn't leak anything about the
+ * email itself.
+ */
+export async function forgotPassword(email: string): Promise<{ rateLimited: boolean }> {
+  const res = await fetch(`${baseUrl()}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return { rateLimited: res.status === 429 };
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const res = await fetch(`${baseUrl()}/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new AuthError(`Reset password failed: ${res.status} ${body}`);
+  }
+}

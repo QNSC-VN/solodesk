@@ -40,6 +40,10 @@ jobs:
       # precedent as every other 3rd-party credential in this repo), this
       # just satisfies env.schema.ts's required-field check at boot.
       GOOGLE_OAUTH_CLIENT_ID: "ci-only-placeholder-google-client-id"
+      # Emailed-link base URLs — no e2e test actually clicks these links,
+      # this just satisfies env.schema.ts's declared-var convention.
+      APP_PUBLIC_URL: "http://localhost:3000"
+      WEB_ACCOUNTING_PUBLIC_URL: "http://localhost:3010"
     services:
       postgres:
         image: postgres:18
