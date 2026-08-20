@@ -17,6 +17,7 @@ import { TraceabilityModule } from './modules/traceability/traceability.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReturnsModule } from './modules/returns/returns.module';
 import { TaxFilingModule } from './modules/tax-filing/tax-filing.module';
+import { CustomersModule } from './modules/customers/customers.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TaxFilingModule } from './modules/tax-filing/tax-filing.module';
     NotificationsModule,
     ReturnsModule,
     TaxFilingModule,
+    CustomersModule,
   ],
   providers: [
     // Global — tenant scoping is not a per-route opt-in (Section 4.1).

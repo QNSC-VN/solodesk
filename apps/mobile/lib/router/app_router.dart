@@ -14,6 +14,8 @@ import '../screens/booking_create_screen.dart';
 import '../screens/booking_detail_screen.dart';
 import '../screens/resources_screen.dart';
 import '../screens/tax_screen.dart';
+import '../screens/customers_screen.dart';
+import '../screens/customer_detail_screen.dart';
 
 /// Three real top-level destinations, `SessionState.status` decides which
 /// one — the redirect logic itself, not each screen guessing whether it
@@ -56,6 +58,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home/bookings/resources', builder: (context, state) => const ResourcesScreen()),
       GoRoute(path: '/home/bookings/:id', builder: (context, state) => BookingDetailScreen(bookingId: state.pathParameters['id']!)),
       GoRoute(path: '/home/tax', builder: (context, state) => const TaxScreen()),
+      // Static segment before the `:name` param, same ordering discipline
+      // as the orders/bookings pairs above.
+      GoRoute(path: '/home/customers', builder: (context, state) => const CustomersScreen()),
+      GoRoute(path: '/home/customers/:name', builder: (context, state) => CustomerDetailScreen(name: state.pathParameters['name']!)),
     ],
   );
 });
