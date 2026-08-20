@@ -2673,3 +2673,42 @@ harmless); the pre-existing `use_null_aware_elements` info in
 `api_client.dart` (cosmetic); and `flutter_secure_storage`'s read-after-
 write behavior under long-lived sessions remains the documented suspect
 for the earlier "stale session" anomaly.
+
+## Mobile release readiness — signing, label, prod URL override
+
+User asked what remained before a real release build. Two layers: build
+mechanics (this round) and product backlog (tax/filing, customer,
+expense, connector-state, messaging, compliance-docs — still open, see
+the backlog audit). Mechanics shipped:
+
+- **Release signing is real now.** `android/key.properties` (gitignored)
+  + `android/app/solodesk-dev-upload.jks` (gitignored), generated via
+  `keytool` with a random password stored only in `key.properties`.
+  `build.gradle.kts` reads it and signs `release` with it, falling back
+  to the debug key when absent so a fresh clone still builds (Flutter
+  template behavior, kept deliberately). Verified for real: the built
+  APK's signer cert is `CN=Solodesk Dev Upload` (apksigner
+  --print-certs), not the debug cert. **The name says what it is: a DEV
+  upload keystore for sideloading/distributing outside Play. Before any
+  Play Store upload, generate the real store keystore, back it up, and
+  replace key.properties' contents — an app's first store keystore is
+  permanent for that applicationId.**
+- **`android:label` is `SoloDesk`** (was `solodesk_mobile`) — confirmed
+  in the built APK's badging (`application-label:'SoloDesk'`).
+- **Prod URLs without touching the baked `.env`**: `Env` (config/
+  env.dart) now gives `--dart-define=BACKEND_API_BASE_URL=...` /
+  `AGENT_ORCHESTRATOR_BASE_URL=...` precedence over the `.env` asset
+  (`String.fromEnvironment` — compile-time), so one source tree produces
+  dev and prod binaries; the exact release command is documented in
+  `.env.example`. No prod domain exists yet (`infra/` is empty) — the
+  values are supplied at build time when deployment exists.
+- **Sizes re-confirmed**: split-per-abi release 19.3/21.7/23.2MB, all
+  properly signed. The fat universal `app-release.apk` is 63MB (all
+  ABIs) — distribute the split APK or an appbundle, never the fat one.
+- **Deliberate cuts**: launcher icon still Flutter's default — a real
+  branding asset is a design decision this repo won't guess (same
+  discipline as every ui-ux-pro-max override); R8 minify/shrink left at
+  Flutter defaults — 21.7MB is fine, and enabling it without a dedicated
+  emulator to verify flutter_secure_storage/drift keep working is risk
+  for no meaningful gain (YAGNI). `flutter analyze` clean, tests 4/4
+  after the changes.
