@@ -2250,3 +2250,91 @@ own test suite already found); all 4 bottom-nav tabs (Home/Orders/
 Assistant/Notifications) confirmed rendering their real empty
 states/data correctly, including the Notifications tab's real
 `EMAIL_VERIFY` row.
+
+## Onboarding redesign — "Generative UI" structured input widgets
+
+Picked immediately after the mobile app's first cut shipped: real
+stakeholder feedback was that a single free-text chat box for every
+question — including closed ones like "what kind of business?" and
+"connect SePay, yes/no?" — didn't match what a non-technical, often-
+elderly household-business owner actually needs, or what a prior product
+mockup had shown (a step-by-step flow with per-step button choices).
+Researched current (2026) best practice rather than guessing: consensus
+across multiple sources is that quick-reply buttons reduce effort and
+guide intent, and are the stronger default at the start of a flow — free
+text belongs only where no closed answer set exists, and relying on it
+too early raises drop-off. Doubly true for elderly users specifically —
+Bank of America rebuilt Erica away from an open-chat paradigm once older
+customers proved uncomfortable with it but comfortable with structured,
+menu/search-like interaction.
+
+**The named 2026 pattern for this exact problem is "Generative UI"**: the
+model doesn't just reply with prose, it also calls a tool declaring WHICH
+input widget the client should render next, from a fixed, closed catalog
+— never model-generated arbitrary UI (the concrete, repeatedly-named
+pitfall: "the biggest mistake teams make is letting the AI do anything").
+A real Flutter precedent exists (a GCN generative-UI wizard) validating
+this fits this exact stack, not just web frameworks.
+
+**Implementation, agent-orchestrator**: a new tool, `present_step`
+(`inputType: 'choice' | 'text' | 'form'`, `options?`/`fields?`) — the
+model calls it once per question-asking turn, right after any data-saving
+tool calls for the PREVIOUS answer. `RunAgentTurnResult`/`SendMessageResult`
+(workflow Update result)/`SendMessageResponseDto` all gained an optional
+`step` field carrying this out to the HTTP boundary. The real (non-mock)
+tool-use loop captures `present_step`'s raw arguments directly (it makes
+no HTTP call itself — its only job is being read back out) rather than
+routing them through the generic handler dispatch every other tool uses.
+`ONBOARDING_SYSTEM_PROMPT` now specifies the closed option set per step
+explicitly (3 industry buttons matching the backend's own enum exactly,
+2 SePay yes/no buttons, 3 named form fields for the product step) so the
+model's choice of options is itself constrained, not left to improvise.
+
+**A real bug found by actually running this on a device, not by reading
+the code**: `runOnboardingTurnMocked` was rewritten from a raw turn-index
+state machine to one keyed by CONTENT of the last assistant message
+(needed because the real conditional branch — the SePay token step only
+exists if the owner opted in — doesn't map to a fixed turn number). First
+version's SePay-question marker (`'kết nối SePay'`) collided with that
+same substring appearing in BOTH follow-up replies ("có thể kết nối SePay
+sau" / "Đã kết nối SePay thành công"), so answering "no" re-triggered the
+yes/no branch instead of advancing to the product form — reproduced on a
+real booted emulator, not caught by reading the code or by the type
+checker. Fixed with a marker unique to the question text specifically
+(`'muốn kết nối SePay'`), verified by re-running the exact same flow on
+the same emulator afterward.
+
+**Mobile implementation**: two new widgets, `ChoiceButtons` (a `Wrap` of
+outlined buttons — never a clipped single row, `ui-ux-pro-max`'s own
+chip-collection-reflow rule — tapping immediately sends the option, no
+separate submit step) and `StepForm` (a small dynamic set of labeled
+fields, numeric keyboard for `number`-type fields, one "Xác nhận" button
+disabled until every field is filled). `OnboardingChatScreen` picks which
+to render from the reply's `step.inputType`, falling back to the existing
+free-text `ChatInput` when `step` is absent (including the final summary
+turn, which intentionally has no `step` — no further input is needed
+there). A `form` step's own chat bubble shows each field's human-readable
+`label: value` line, never the raw `key=value` wire string sent to
+agent-orchestrator underneath (`StepForm.onSubmit` returns the raw
+field-name→value map specifically so the caller can build both
+representations, rather than a pre-encoded string that would leak into
+the chat history as-is). See `design-system/solodesk/pages/mobile.md`'s
+"Onboarding — structured input widgets" section for the full design
+reasoning and research citations.
+
+Verified: typecheck clean (agent-orchestrator), e2e 37/37 (35 pre-existing
++ 2 new — the workflow-level test suite's Update-result assertions updated
+for the now-object-shaped reply, plus a new case confirming a `step`
+descriptor returned by a stubbed Activity survives the real Temporal
+Workflow/Update round-trip), `flutter analyze`/`flutter test` clean. Real
+manual end-to-end smoke test on the same booted Android emulator used for
+the mobile app's own initial verification: a real signup → login →
+onboarding conversation rendered exactly 3 tappable buttons for the
+industry question (not a text box), correctly classified the tapped
+option, a free-text field for the business name, exactly 2 buttons for
+the SePay question, and a real 3-field form for the first product —
+submitting it showed a human-readable summary bubble (not the wire
+string), correctly created the real SKU with the exact submitted values,
+set `activated_at`, and the router transitioned to the home shell showing
+the real new tenant name — confirmed directly via Postgres, not assumed
+from the UI alone.

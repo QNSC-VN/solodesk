@@ -60,9 +60,50 @@ this page states the actual mobile-platform numbers).
   to leave gutters on a phone screen).
 - Progress signal: a thin, non-blocking top indicator (e.g. "Bước 2/5"),
   not a modal wizard with Back/Next buttons — the conversation itself IS
-  the navigation. Never let the user get stuck with no way to answer
-  (every AI turn ends in either a direct question or a clear yes/no
-  choice, per agent-orchestrator's own onboarding tool design).
+  the navigation. Never let the user get stuck with no way to answer —
+  every AI turn ends in a rendered input widget from the closed catalog
+  below (buttons, a form, or free text), never a dead end.
+
+### Onboarding — structured input widgets ("Generative UI")
+
+Real feedback on the first build: a single free-text box for every
+question — even "what kind of business do you run?" (a closed 3-value
+choice) and "connect SePay? yes/no" — tests badly for this audience.
+Research confirms the fix direction: quick-reply buttons reduce effort
+and guide intent, and are the stronger default at the start of a flow;
+free text is for genuinely open-ended answers only, and relying on it
+too early raises drop-off. This is doubly true for elderly users
+specifically — Bank of America rebuilt its own assistant (Erica) away
+from a chat paradigm after finding older customers uncomfortable with
+open chat but comfortable with structured, search/menu-like interaction.
+
+The named 2026 pattern for "model decides the input widget, client
+renders it" is **Generative UI**: the model doesn't just reply with
+prose, it also calls a tool (`present_step`, agent-orchestrator) that
+declares which widget to render next, from a **fixed, closed catalog** —
+never model-generated arbitrary UI, the concrete pitfall every source on
+this pattern names ("the biggest mistake teams make is letting the AI do
+anything"). Three widget types, no more, added only when a real 4th
+shape is needed:
+
+- **`choice`** — a `Wrap` of tappable buttons (`ChoiceButtons`), never a
+  single clipped row (chip-collection-reflow rule: labels stay whole).
+  Used for the industry question (3 fixed options, matching the backend's
+  own closed enum exactly) and the SePay yes/no question.
+- **`form`** — a small set of labeled fields shown together
+  (`StepForm`), submitted as one action. Used for the first-product step
+  (name/unit/price) — replaced a single comma-separated free-text line,
+  which was fragile (wrong field order, a missing comma) and asked the
+  user to remember a format instead of just filling in blanks.
+- **`text`** — the existing free-text `ChatInput`, unchanged. Reserved
+  for genuinely open-ended answers only: the business name, the SePay
+  token — nothing with a knowable, closed answer set uses this anymore.
+
+A `form` step submits a human-readable chat bubble built from each
+field's display `label` (e.g. "Tên sản phẩm: Cà phê Arabica"), never the
+raw machine-readable wire string sent to agent-orchestrator underneath —
+showing a user their own `key=value` payload back at them would be a
+real regression in exactly the audience this redesign is for.
 
 ### Mode 2: Daily-use home (after onboarding, the app opened tomorrow)
 
@@ -120,7 +161,14 @@ TOKENS (`packages/ui-kit`) are shared.
 - **`ChatInput`** — text field + send button + a reserved mic-button slot
   (disabled/hidden in v1 — voice input is a documented v2 cut, not built
   yet, see CLAUDE.md's mobile-app scope note) so adding real voice later
-  doesn't require a layout rework.
+  doesn't require a layout rework. Only rendered for a `text`-type step.
+- **`ChoiceButtons`** — Generative UI's `choice` step widget, a `Wrap` of
+  outlined buttons, each ≥48dp, tapping immediately sends that option's
+  exact label as the answer (no separate submit step, matching the
+  research finding that buttons should minimize taps/typing).
+- **`StepForm`** — Generative UI's `form` step widget, a small dynamic
+  set of labeled `TextField`s (numeric keyboard for `number`-type fields)
+  with one "Xác nhận" submit button, disabled until every field is filled.
 - **`StatusBadge`** — `StatusPill`'s Flutter twin, same status→color
   mapping as web (`confirmed`→success green, `cancelled`→error red,
   `returned`→neutral) — one mapping table, ported, not reinvented per
