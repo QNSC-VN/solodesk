@@ -160,7 +160,26 @@ GitHub repo, multiple independently-deployable services.
   see CLAUDE.md). Table sorting and a tenant switcher are still real,
   deliberate cuts — not built yet.
 
-Not yet built: `apps/mobile`, `apps/web-b2g-dashboard`.
+- `apps/mobile` — Flutter, the first non-web frontend and, per docs,
+  the actual primary surface most users will open (the other 2 apps are
+  a public traceability page and a staff/accountant tool). Login
+  (password), a real `mode: 'onboarding'` AI conversation for a first-run
+  tenant (agent-orchestrator's onboarding copilot, gained a 4th tool,
+  `complete_onboarding`, so a real completion signal — `activatedAt` —
+  now exists at all; see CLAUDE.md), and a 4-tab home shell (Trang chủ/
+  Đơn hàng/Trợ lý AI/Thông báo) once onboarded. No BFF needed here (no
+  browser CORS/XSS surface for a native app) — calls backend-api/
+  agent-orchestrator directly with a token in `flutter_secure_storage`.
+  PowerSync offline-first sync and Vietnamese voice input are real,
+  documented cuts, not built yet. Reuses the SAME Agriculture/Farm Tech
+  design tokens as the Next.js apps (`design-system/solodesk/pages/
+  mobile.md`) — a `ui-ux-pro-max` run for this page suggested a generic
+  "AI purple" palette and a marketing-landing pattern, both overridden
+  for the same "one design system, not a fork" reason docs' own
+  `packages/ui-kit` intent states. Verified end to end on a real Android
+  emulator, not just unit tests — see CLAUDE.md's "apps/mobile" section.
+
+Not yet built: `apps/web-b2g-dashboard`.
 
 ## Local dev
 
@@ -192,6 +211,9 @@ cp apps/web-buyer-portal/.env.example apps/web-buyer-portal/.env.local
 pnpm --filter web-buyer-portal dev                 # :3000 default — pass --port to avoid clashing with backend-api
 cp apps/web-accounting/.env.example apps/web-accounting/.env.local  # fill in NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID
 pnpm --filter web-accounting dev                   # :3010 (fixed — see its package.json)
+cd apps/mobile && cp .env.example .env             # Android emulator: use 10.0.2.2, not localhost, in both URLs
+flutter pub get
+flutter run                                        # pick a booted emulator/simulator/device
 ```
 
 Run the cross-tenant isolation gate locally before touching anything in

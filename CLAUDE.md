@@ -2126,3 +2126,127 @@ the real `/reset-password?token=...` page renders with the token embedded
 new password correctly logs in (real session) → confirmed the reused
 token correctly gets `401 INVALID_TOKEN` on a second attempt → confirmed
 `/login?reset=1` renders the real success banner.
+
+## `agent-orchestrator`'s missing onboarding-completion signal — found while designing the mobile app
+
+Before any mobile code was written, designing its login-routing logic
+("show the onboarding conversation vs. the home screen") surfaced a real
+gap: `TenantService.activateTenant`/`ITenantRepository.activate` (sets
+`identity.tenants.activated_at`) existed at every layer below the HTTP
+boundary, but no controller route ever called it, and the onboarding
+conversation's own final step ("confirm everything in one short summary")
+was plain text with no tool call — `activatedAt` was permanently `null`
+for every tenant, dead code since the day it was written.
+
+Fixed with a new 4th onboarding tool, `complete_onboarding`
+(agent-orchestrator), calling a new `POST /internal/onboarding/tenants/
+:tenantId/complete` route (backend-api, same `@Public()`/
+`@SkipTenantContext()`/`InternalServiceGuard` shape as the other 3
+onboarding endpoints) — the onboarding system prompt's step 6 now
+explicitly instructs the model to call it right after the summary, and
+the mock-mode state machine (`runOnboardingTurnMocked`) calls it at its
+final turn too, same "mock stands in for the LLM call only, real tool
+functions underneath" discipline as every other mocked path in this repo.
+`GET /v1/tenants/:id`'s `activatedAt` is now the one real signal any
+client checks — first consumer: the new mobile app below.
+
+Verified: typecheck clean (backend-api, agent-orchestrator), backend-api
+e2e 81/81 (new: `TenantService.activateTenant` sets `activatedAt` on a
+tenant that starts `null`), agent-orchestrator e2e 36/36 (new: the same
+config-error-path convention `onboarding-tools.e2e-spec.ts` already uses
+for its 3 siblings). Real manual smoke test against live dev servers (a
+real Temporal dev server + a real mocked-LLM worker + backend-api): drove
+a complete 5-turn onboarding conversation via real HTTP calls, confirmed
+`identity.tenants.activated_at` flipped from `NULL` to a real timestamp,
+and confirmed `GET /v1/tenants/:id` reflects it.
+
+## `apps/mobile` — the first Flutter app, and the one most users will actually use
+
+Picked immediately after backend-api's core business loop (onboarding →
+catalog → sales → invoicing → payment → returns → traceability → booking
+→ AI assistant) reached a genuinely usable state end to end. Docs' own
+framing is explicit: this is "the primary surface for household users" —
+`web-buyer-portal`/`web-accounting` are public-traceability and staff
+tools respectively, neither is what an actual household-business owner
+opens day to day.
+
+**Scope, cut deliberately narrow, same discipline as every prior
+feature**: login (password only — Google Sign-In is a documented cut,
+same shape as the web apps' own not-yet-built items) → a real
+`mode: 'onboarding'` AI conversation for a first-run tenant → a 4-tab
+home shell (Trang chủ/Đơn hàng/Trợ lý AI/Thông báo) once onboarded.
+Explicitly NOT built: docs' PowerSync offline-first sync (real, separate
+infra — its own service, Postgres replica-identity setup, sync rules —
+a big lift with no proven need yet) and Vietnamese voice input (a UI slot
+is reserved in `ChatInput` for it, disabled, so adding it later doesn't
+need a layout rework). Orders/invoices/stock table parity with
+`web-accounting` is also NOT built — that's the accountant/staff
+persona's tool; this app's Home tab shows 3 real numbers (today's
+revenue, low-stock count, unread notifications), not a dense table.
+
+**Design**: ran `ui-ux-pro-max --design-system` for this page
+specifically (query tuned for the elderly/non-technical audience,
+`--density 3 --variance 3 --motion 3`). Same "verify fit, override the
+wrong auto-aggregation" discipline as every other page in this design
+system — the tool suggested a marketing "Product Demo + Features"
+pattern and a generic "AI purple" color scheme (`#7C3AED`), BOTH
+overridden: this is a working app, not a landing page, and docs'
+architecture explicitly wants `packages/ui-kit` sharing ONE design
+system across Flutter and Next.js, not a second palette forked for
+mobile. `design-system/solodesk/pages/mobile.md` documents the real
+override reasoning and the parts of the tool's output that DID carry
+over correctly (spacious/high-contrast structural values, the real
+per-platform touch-target numbers — 48dp Android/44pt iOS, not a single
+"44px" rule borrowed from the web pages).
+
+**Architecture, genuinely different from the web apps' BFF shape, for a
+real reason**: mobile apps aren't subject to browser CORS/XSS the way a
+web app's client JS is, so this app calls backend-api/agent-orchestrator
+directly with a bearer token stored in `flutter_secure_storage`
+(Keychain/Keystore-backed) — no BFF, no httpOnly-cookie dance
+`web-accounting` needed. `ApiClient` reacts to a real 401 by refreshing
+once (concurrent 401s share one refresh call via a single in-flight
+`Future`, guarding against backend-api's refresh-token rotation
+invalidating itself mid-burst) — the mirror-image of `web-accounting`'s
+proactive pre-expiry refresh in `proxy.ts` (that shape exists there
+specifically because only a Proxy/Server Function response can set a
+cookie; a plain in-memory token has no such constraint here). Riverpod +
+go_router, picked directly from a `ui-ux-pro-max --stack flutter` query,
+not guessed. `SessionController`'s `SessionStatus` (`unauthenticated` /
+`needsOnboarding` / `ready`) is the one source of truth `app_router.dart`'s
+redirect logic reads — the onboarding chat screen re-checks tenant status
+after every reply and lets the router react on its own, rather than the
+screen deciding when to navigate itself.
+
+**A real Android toolchain bug, found only by actually building on a
+device, not by reading the code**: `flutter_secure_storage@11.0.0`
+requires compileSdk 37; this environment's Android SDK auto-installer
+(no proper `cmdline-tools`/`sdkmanager` present) resolved that request
+into a directory literally named `android-37.0` (`source.properties`
+reports `AndroidVersion.ApiLevel=37.0`, an extension-level-qualified
+string) while Gradle's target-hash resolution looked for the plain
+`android-37` — a real, environment-specific mismatch, not a code bug.
+Fixed by pinning `flutter_secure_storage: 9.2.4` (targets a normal, already-
+available compileSdk), not by fighting the toolchain further.
+
+Verified for real, not assumed: `flutter analyze` clean, `flutter test`
+1/1 (a real widget test — `LoginScreen` renders its email/password fields
+and login button). Backend-api and agent-orchestrator running live (the
+same real dev stack the previous two features' smoke tests used, Android
+emulator's `10.0.2.2` substituting for `localhost`), a real signup →
+verify-email → login round-trip, then the ENTIRE onboarding conversation
+driven via real `adb input`/screenshots on a booted Pixel 8 Pro emulator
+(Android 14): every one of the 5 real turns rendered correctly (user
+bubbles right-aligned/green-tinted, assistant bubbles left-aligned/
+bordered, exactly per the design-system spec), and the moment the final
+turn's real `complete_onboarding` call landed, the router — with ZERO
+manual navigation code at the call site — redirected straight to the
+home shell, confirming the reactive `SessionStatus` design actually
+works, not just compiles. The home shell then rendered with the real
+tenant name in the app bar and 3 real, correctly-computed numbers (today's
+revenue `0 đ`, 1 low-stock SKU, 1 unread notification — the same "fresh
+account starts at unread count 1" real signup notification `web-accounting`'s
+own test suite already found); all 4 bottom-nav tabs (Home/Orders/
+Assistant/Notifications) confirmed rendering their real empty
+states/data correctly, including the Notifications tab's real
+`EMAIL_VERIFY` row.
