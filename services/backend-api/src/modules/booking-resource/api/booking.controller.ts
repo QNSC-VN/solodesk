@@ -1,8 +1,8 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Body } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Body, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { getCurrentTenantId } from '../../../platform/tenant-context';
 import { BookingService } from '../application/booking.service';
-import { RequestHoldDto, BookingResponseDto } from './booking.dto';
+import { RequestHoldDto, ListBookingsQueryDto, BookingResponseDto } from './booking.dto';
 import type { Booking } from '../domain/booking.types';
 
 function toDto(b: Booking): BookingResponseDto {
@@ -56,6 +56,17 @@ export class BookingController {
   async noShow(@Param('id', ParseUUIDPipe) id: string): Promise<BookingResponseDto> {
     const booking = await this.bookingService.markNoShow(id, getCurrentTenantId());
     return toDto(booking);
+  }
+
+  @Get()
+  @ApiOperation({ summary: "List the caller's tenant bookings, optionally filtered by resource and a startsAt window — the bookings list screen's data source (avoids N+1 by-resource calls)" })
+  async list(@Query() dto: ListBookingsQueryDto): Promise<BookingResponseDto[]> {
+    const list = await this.bookingService.listBookings(getCurrentTenantId(), {
+      ...(dto.resourceId !== undefined ? { resourceId: dto.resourceId } : {}),
+      ...(dto.from !== undefined ? { from: new Date(dto.from) } : {}),
+      ...(dto.to !== undefined ? { to: new Date(dto.to) } : {}),
+    });
+    return list.map(toDto);
   }
 
   @Get(':id')

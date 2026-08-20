@@ -9,6 +9,10 @@ import '../screens/order_detail_screen.dart';
 import '../screens/order_create_screen.dart';
 import '../screens/stock_screen.dart';
 import '../screens/outbound_queue_screen.dart';
+import '../screens/bookings_screen.dart';
+import '../screens/booking_create_screen.dart';
+import '../screens/booking_detail_screen.dart';
+import '../screens/resources_screen.dart';
 
 /// Three real top-level destinations, `SessionState.status` decides which
 /// one — the redirect logic itself, not each screen guessing whether it
@@ -44,6 +48,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!)),
       GoRoute(path: '/home/stock', builder: (context, state) => const StockScreen()),
       GoRoute(path: '/home/outbound-queue', builder: (context, state) => const OutboundQueueScreen()),
+      // Static segments before the `:id` param, same ordering discipline
+      // as the orders pair above.
+      GoRoute(path: '/home/bookings', builder: (context, state) => const BookingsScreen()),
+      GoRoute(path: '/home/bookings/new', builder: (context, state) => const BookingCreateScreen()),
+      GoRoute(path: '/home/bookings/resources', builder: (context, state) => const ResourcesScreen()),
+      GoRoute(path: '/home/bookings/:id', builder: (context, state) => BookingDetailScreen(bookingId: state.pathParameters['id']!)),
     ],
   );
 });

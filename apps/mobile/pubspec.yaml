@@ -31,6 +31,11 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # SDK-only, no version pin needed — gives the SDK's own widgets
+  # (showDatePicker's calendar, dialogs) real Vietnamese labels.
+  flutter_localizations:
+    sdk: flutter
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8

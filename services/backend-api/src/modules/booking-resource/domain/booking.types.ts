@@ -27,6 +27,14 @@ export interface Booking {
   holdExpiresAt: Date | null;
 }
 
+export interface BookingListFilters {
+  resourceId?: string;
+  /** Inclusive lower bound on startsAt. */
+  from?: Date;
+  /** Inclusive upper bound on startsAt. */
+  to?: Date;
+}
+
 export interface RequestHoldInput {
   resourceId: string;
   customerName: string;

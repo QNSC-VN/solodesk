@@ -3,7 +3,7 @@ import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
 import { assertTenantMatchesSession } from '../../../platform/tenant-context';
 import { BOOKING_REPOSITORY, type IBookingRepository } from '../domain/ports/booking.repository';
 import { ResourceService } from './resource.service';
-import type { Booking, RequestHoldInput } from '../domain/booking.types';
+import type { Booking, BookingListFilters, RequestHoldInput } from '../domain/booking.types';
 
 @Injectable()
 export class BookingService {
@@ -67,5 +67,16 @@ export class BookingService {
     assertTenantMatchesSession(tenantId);
     await this.resourceService.getResource(resourceId, tenantId); // 404s if missing/cross-tenant
     return this.bookingRepository.listByResource(resourceId, tenantId);
+  }
+
+  async listBookings(tenantId: string, filters: BookingListFilters = {}): Promise<Booking[]> {
+    assertTenantMatchesSession(tenantId);
+    if (filters.from && filters.to && filters.to < filters.from) {
+      throw new BadRequestException('to must not be before from.');
+    }
+    if (filters.resourceId) {
+      await this.resourceService.getResource(filters.resourceId, tenantId); // 404s if missing/cross-tenant
+    }
+    return this.bookingRepository.listByTenant(tenantId, filters);
   }
 }

@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { eq, and, or, lt, gt, inArray, sql } from 'drizzle-orm';
+import { eq, and, or, lt, gt, gte, lte, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../../../../db/client';
 import { bookings } from '../../../../db/schema/bookings';
 import { resources } from '../../../../db/schema/resources';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
 import type { IBookingRepository } from '../../domain/ports/booking.repository';
-import type { Booking, RequestHoldInput } from '../../domain/booking.types';
+import type { Booking, BookingListFilters, RequestHoldInput } from '../../domain/booking.types';
 
 function toDomain(row: typeof bookings.$inferSelect): Booking {
   return {
@@ -43,6 +43,24 @@ export class BookingDrizzleRepository implements IBookingRepository {
   async listByResource(resourceId: string, tenantId: string): Promise<Booking[]> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const rows = await tx.select().from(bookings).where(and(eq(bookings.resourceId, resourceId), eq(bookings.tenantId, tenantId)));
+      return rows.map(toDomain);
+    });
+  }
+
+  async listByTenant(tenantId: string, filters?: BookingListFilters): Promise<Booking[]> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.tenantId, tenantId),
+            filters?.resourceId !== undefined ? eq(bookings.resourceId, filters.resourceId) : undefined,
+            filters?.from !== undefined ? gte(bookings.startsAt, filters.from) : undefined,
+            filters?.to !== undefined ? lte(bookings.startsAt, filters.to) : undefined,
+          ),
+        )
+        .orderBy(desc(bookings.startsAt));
       return rows.map(toDomain);
     });
   }

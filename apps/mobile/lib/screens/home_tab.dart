@@ -16,7 +16,7 @@ import '../theme/app_theme.dart';
 /// orders/invoices/stock DataTable parity `web-accounting` has (that's
 /// the accountant/staff persona's tool), just enough for an owner's
 /// at-a-glance screen plus a fast path into the 2 things they do most:
-/// record a sale, check stock.
+/// record a sale, check stock, take a booking.
 class HomeTab extends ConsumerStatefulWidget {
   const HomeTab({super.key});
 
@@ -116,7 +116,17 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                   const SizedBox(width: AppMetrics.touchSpacing),
                   Expanded(
                     child: AppButton(
-                      label: 'Xem tồn kho',
+                      label: 'Đặt chỗ',
+                      onPressed: () async {
+                        await context.push('/home/bookings');
+                        _refresh();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: AppMetrics.touchSpacing),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Tồn kho',
                       variant: AppButtonVariant.secondary,
                       onPressed: () => context.push('/home/stock'),
                     ),

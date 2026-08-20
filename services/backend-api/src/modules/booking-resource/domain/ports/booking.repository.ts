@@ -1,10 +1,12 @@
-import type { Booking, RequestHoldInput } from '../booking.types';
+import type { Booking, BookingListFilters, RequestHoldInput } from '../booking.types';
 
 export const BOOKING_REPOSITORY = Symbol('BOOKING_REPOSITORY');
 
 export interface IBookingRepository {
   findById(id: string, tenantId: string): Promise<Booking | null>;
   listByResource(resourceId: string, tenantId: string): Promise<Booking[]>;
+  /** Tenant-wide list (the bookings list screen's data source — avoids N+1 by-resource calls), optionally scoped. */
+  listByTenant(tenantId: string, filters?: BookingListFilters): Promise<Booking[]>;
   /**
    * `null` = capacity unavailable for the requested window — same
    * "repository returns null on a failed guard, service decides that's a

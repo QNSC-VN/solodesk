@@ -18,6 +18,11 @@ class StatusBadge extends StatelessWidget {
     'returned': _Variant.neutral,
     'issued': _Variant.success,
     'completed': _Variant.success,
+    // Booking statuses — color map only; the label default stays English
+    // (orders screens rely on it), booking screens always pass a Vietnamese
+    // `label:` from `bookingStatusLabel`.
+    'held': _Variant.pending,
+    'no_show': _Variant.error,
   };
 
   static String _labelFor(String status) => status.split('_').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');

@@ -14,6 +14,12 @@ export class RequestHoldDto {
   holdMinutes?: number;
 }
 
+export class ListBookingsQueryDto {
+  @ApiProperty({ required: false }) @IsOptional() @IsUUID() resourceId?: string;
+  @ApiProperty({ required: false, description: 'Inclusive lower bound on startsAt (ISO 8601)' }) @IsOptional() @IsDateString() from?: string;
+  @ApiProperty({ required: false, description: 'Inclusive upper bound on startsAt (ISO 8601)' }) @IsOptional() @IsDateString() to?: string;
+}
+
 export class BookingResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() resourceId!: string;
