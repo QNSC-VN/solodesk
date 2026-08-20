@@ -44,3 +44,16 @@ describe('TenantService.updateProfile — real Postgres, no mocks', () => {
     await expect(tenantService.updateProfile('00000000-0000-0000-0000-000000000000', { industry: 'tourism' })).rejects.toThrow();
   });
 });
+
+describe('TenantService.activateTenant — real Postgres, no mocks', () => {
+  it('sets activatedAt on a freshly-seeded tenant that starts with it null — the one signal a client checks to know onboarding is done', async () => {
+    const tenantId = await seedTenant('Onboarding Test Tenant Activation');
+
+    const before = await tenantService.getTenant(tenantId);
+    expect(before.activatedAt).toBeNull();
+
+    const activated = await tenantService.activateTenant(tenantId);
+
+    expect(activated.activatedAt).toBeInstanceOf(Date);
+  });
+});

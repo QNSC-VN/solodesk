@@ -42,4 +42,22 @@ export class InternalOnboardingTenantController {
     const tenant = await this.tenantService.updateProfile(tenantId, dto);
     return toDto(tenant);
   }
+
+  /**
+   * Called once, by the onboarding copilot's final `complete_onboarding`
+   * tool call (agent-orchestrator) — the one signal a client (the mobile
+   * app) can check to decide "show the onboarding conversation" vs "show
+   * the normal home screen" on login (`GET /v1/tenants/:id`'s `activatedAt`).
+   * `TenantService.activateTenant`/`ITenantRepository.activate` already
+   * existed, fully wired at every layer below this — this route was
+   * genuinely the only missing piece (found while designing the mobile
+   * app's login routing, not assumed).
+   */
+  @Post(':tenantId/complete')
+  @Public()
+  @SkipTenantContext()
+  async complete(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<TenantResponseDto> {
+    const tenant = await this.tenantService.activateTenant(tenantId);
+    return toDto(tenant);
+  }
 }

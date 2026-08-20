@@ -3,6 +3,7 @@ import { ApplicationFailure } from '@temporalio/common';
 import { setBusinessProfile } from '../src/temporal/activities/tools/set-business-profile.tool';
 import { addFirstProduct } from '../src/temporal/activities/tools/add-first-product.tool';
 import { connectSepay } from '../src/temporal/activities/tools/connect-sepay.tool';
+import { completeOnboarding } from '../src/temporal/activities/tools/complete-onboarding.tool';
 
 /**
  * Only the config-error path is tested here, deterministically, with no
@@ -35,5 +36,9 @@ describe('Onboarding tools — config-error path, no live backend-api/connector-
 
   it('connectSepay throws a non-retryable ApplicationFailure when INTERNAL_SERVICE_TOKEN is not set', async () => {
     await expect(connectSepay({ tenantId: 'irrelevant', apiToken: 'sk_test_123' })).rejects.toThrow(ApplicationFailure);
+  });
+
+  it('completeOnboarding throws a non-retryable ApplicationFailure when INTERNAL_SERVICE_TOKEN is not set', async () => {
+    await expect(completeOnboarding({ tenantId: 'irrelevant' })).rejects.toThrow(ApplicationFailure);
   });
 });
