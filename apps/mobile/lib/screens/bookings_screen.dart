@@ -61,6 +61,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             tooltip: 'Tài nguyên',
             onPressed: () async {
               await context.push('/home/bookings/resources');
+              if (!mounted) return;
               _refresh();
             },
           ),
@@ -69,6 +70,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final created = await context.push<bool>('/home/bookings/new');
+          if (!mounted) return;
           if (created == true) _refresh();
         },
         icon: const Icon(Icons.add),
@@ -105,6 +107,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   onAction: data.resources.isEmpty
                       ? () async {
                           await context.push('/home/bookings/resources');
+                          if (!mounted) return;
                           _refresh();
                         }
                       : null,
@@ -144,6 +147,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
               borderRadius: BorderRadius.circular(AppMetrics.cardRadius),
               onTap: () async {
                 await context.push('/home/bookings/${b.id}');
+                if (!mounted) return;
                 _refresh();
               },
               child: Padding(

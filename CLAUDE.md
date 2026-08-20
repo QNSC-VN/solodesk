@@ -2630,3 +2630,46 @@ resource → hold → confirm → `select ... where tenant_id = <that tenant>`
 — five minutes, and the chain is closed. Also found and left alone:
 `pnpm lint` in backend-api references `eslint` which no package.json in
 the workspace declares — pre-existing, CI runs its own lint step.
+
+## Mobile perf/correctness audit round — the "app feels heavy" answer
+
+User asked for a solution-architect audit of `apps/mobile` ("why is our
+app too heavy"). Headline: the app is NOT heavy — the 181MB figure was
+the DEBUG APK; `flutter build apk --release --split-per-abi` yields
+19.3/21.7/23.2MB (armeabi-v7a/arm64-v8a/x86_64), of which 11.7MB is
+`libflutter.so` (engine, fixed cost) and 7.5MB `libapp.so` (Dart+icons)
+— no bloat. Distribute release builds; debug size is 9x for no product
+reason. Fixes applied this round (analyze clean, tests 4/4; emulator
+re-verification skipped deliberately — see the shared-emulator note in
+the previous section):
+
+- **`ApiClient` now owns one shared `http.Client`** — package:http's
+  top-level `http.get`/`http.post` create AND close a new `Client` per
+  call (its own doc: "you should use a single Client"), so every request
+  paid fresh TCP setup. Shared client keeps connections alive.
+- **15s request timeout on every call + the refresh call** — a hung
+  socket previously pinned the caller's future (and its spinner)
+  forever; same discipline as connector-hub's `connectorFetch`.
+  `TimeoutException` lands in callers' existing non-`ApiException`
+  network-failure handling — no call-site changes needed.
+- **`HomeTab._load()` parallelized** — orders chain (sequential by
+  necessity) now runs concurrently with stock-summary and unread-count
+  via `Future.wait`; was 5 back-to-back round trips on the first screen
+  of every launch.
+- **`BookingCreateScreen` evening edge bug fixed** — default hour was
+  `(now.hour + 1) % 24`, so use after 23:00 defaulted to hour 0, which
+  the 5–23 dropdown doesn't offer: empty-looking field, submit silently
+  booking 00:00. Now clamped into range.
+- **`if (!mounted) return;` guards** after every `await context.push`
+  that calls `_refresh()`/`setState` (bookings list x4, home x3, orders
+  FAB) — lint-level use-after-dispose risk, cheap to close.
+
+Known, deliberately NOT fixed this round: `google_fonts` fetches
+Lexend/Source Sans 3 at runtime (first-launch font jank, network
+dependency; cached afterward — bundling the TTFs costs ~1-2MB APK and
+removes both, a real option when anyone cares); OrdersTab and HomeTab
+both trigger `drainPending()` after launch (duplicate sync burst,
+harmless); the pre-existing `use_null_aware_elements` info in
+`api_client.dart` (cosmetic); and `flutter_secure_storage`'s read-after-
+write behavior under long-lived sessions remains the documented suspect
+for the earlier "stale session" anomaly.

@@ -34,18 +34,30 @@ class _HomeTabState extends ConsumerState<HomeTab> {
   }
 
   Future<_HomeSummary> _load() async {
-    try {
-      await ref.read(ordersServiceProvider).refreshFromServer();
-      await ref.read(orderSyncWorkerProvider).drainPending();
-    } catch (_) {
-      // offline or a real backend error — local-first read below still renders
-    }
-    final orders = await ref.read(ordersServiceProvider).getOrders();
+    // The orders chain (server refresh -> outbox drain -> local read) is
+    // sequential by necessity; stock and unread-count are independent of
+    // it and of each other, so all three run CONCURRENTLY — this is the
+    // first screen of every launch, and three sequential round trips
+    // made it visibly slower than it needs to be.
+    final ordersFuture = () async {
+      try {
+        await ref.read(ordersServiceProvider).refreshFromServer();
+        await ref.read(orderSyncWorkerProvider).drainPending();
+      } catch (_) {
+        // offline or a real backend error — local-first read below still renders
+      }
+      return ref.read(ordersServiceProvider).getOrders();
+    }();
     // Stock/notifications stay online-only in this cut (see the
     // offline-first plan's scope note) — a real cut, but it must degrade
     // to "unknown" rather than take the whole Home tab down with it.
-    final stock = await ref.read(stockServiceProvider).getStockSummary().catchError((_) => <StockSummaryItem>[]);
-    final unreadCount = await ref.read(notificationsServiceProvider).getUnreadCount().catchError((_) => 0);
+    final stockFuture = ref.read(stockServiceProvider).getStockSummary().catchError((_) => <StockSummaryItem>[]);
+    final unreadFuture = ref.read(notificationsServiceProvider).getUnreadCount().catchError((_) => 0);
+
+    final results = await Future.wait([ordersFuture, stockFuture, unreadFuture]);
+    final orders = results[0] as List<Order>;
+    final stock = results[1] as List<StockSummaryItem>;
+    final unreadCount = results[2] as int;
 
     final now = DateTime.now();
     final validOrders = orders.where((o) => o.status != 'cancelled').toList();
@@ -109,6 +121,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                       label: 'Tạo đơn hàng',
                       onPressed: () async {
                         final created = await context.push<bool>('/home/orders/new');
+                        if (!mounted) return;
                         if (created == true) _refresh();
                       },
                     ),
@@ -119,6 +132,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                       label: 'Đặt chỗ',
                       onPressed: () async {
                         await context.push('/home/bookings');
+                        if (!mounted) return;
                         _refresh();
                       },
                     ),
@@ -140,6 +154,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                   variant: AppButtonVariant.secondary,
                   onPressed: () async {
                     await context.push('/home/outbound-queue');
+                    if (!mounted) return;
                     _refresh();
                   },
                 ),

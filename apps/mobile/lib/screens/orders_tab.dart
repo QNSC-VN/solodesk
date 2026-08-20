@@ -48,6 +48,7 @@ class _OrdersTabState extends ConsumerState<OrdersTab> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final created = await context.push<bool>('/home/orders/new');
+          if (!mounted) return;
           if (created == true) _refresh();
         },
         icon: const Icon(Icons.add),

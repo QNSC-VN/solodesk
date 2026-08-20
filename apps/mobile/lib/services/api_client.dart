@@ -32,6 +32,20 @@ class ApiClient {
   final SecureSessionStore _store;
   Future<void>? _refreshInFlight;
 
+  /// One shared client for the app's lifetime — package:http's top-level
+  /// `http.get`/`http.post` create (and close) a NEW `Client` per call
+  /// (its own doc: "you should use a single Client"), which meant a fresh
+  /// TCP connection for every request. A shared client keeps connections
+  /// alive and reuses them.
+  final http.Client _http = http.Client();
+
+  /// A hung request must not hang the caller's future forever — same
+  /// discipline connector-hub's `connectorFetch` applies (~10s client
+  /// timeout). 15s covers slow rural 3G round trips without letting a
+  /// dead socket pin a spinner. TimeoutException lands in callers'
+  /// existing non-ApiException (network-failure) handling.
+  static const _timeout = Duration(seconds: 15);
+
   ApiClient(this._store);
 
   String _baseUrl(ApiTarget target) => switch (target) {
@@ -51,8 +65,8 @@ class ApiClient {
     final headers = {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token', ...?extraHeaders};
 
     final res = method == 'GET'
-        ? await http.get(uri, headers: headers)
-        : await http.post(uri, headers: headers, body: body == null ? null : jsonEncode(body));
+        ? await _http.get(uri, headers: headers).timeout(_timeout)
+        : await _http.post(uri, headers: headers, body: body == null ? null : jsonEncode(body)).timeout(_timeout);
 
     if (res.statusCode == 401 && !isRetry) {
       final refreshed = await _refreshOnce();
@@ -82,11 +96,13 @@ class ApiClient {
     final csrfToken = await _store.csrfToken;
     if (refreshToken == null) throw SessionExpiredException();
 
-    final res = await http.post(
-      Uri.parse('${Env.backendApiBaseUrl}/auth/refresh'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'refreshToken': refreshToken, if (csrfToken != null) 'csrfToken': csrfToken}),
-    );
+    final res = await _http
+        .post(
+          Uri.parse('${Env.backendApiBaseUrl}/auth/refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refreshToken': refreshToken, if (csrfToken != null) 'csrfToken': csrfToken}),
+        )
+        .timeout(_timeout);
     if (res.statusCode < 200 || res.statusCode >= 300) throw SessionExpiredException();
 
     final json = jsonDecode(res.body) as Map<String, dynamic>;

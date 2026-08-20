@@ -56,8 +56,12 @@ class _BookingCreateScreenState extends ConsumerState<BookingCreateScreen> {
     super.initState();
     final now = DateTime.now();
     // Default: the next full hour from now — a booking "right now" is the
-    // common case at the counter.
+    // common case at the counter. Clamped into the dropdown's 5–23 range:
+    // an evening session (23:xx) would otherwise default to hour 0, which
+    // the dropdown doesn't offer — the field would show an empty hint
+    // while the submit silently booked 00:00.
     _hour = (now.hour + 1) % 24;
+    if (_hour < 5) _hour = 5;
     _resourcesFuture = ref.read(bookingsServiceProvider).getResources();
   }
 
