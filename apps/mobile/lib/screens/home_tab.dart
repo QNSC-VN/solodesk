@@ -171,6 +171,16 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                   ),
                 ],
               ),
+              const SizedBox(height: AppMetrics.touchSpacing),
+              AppButton(
+                label: 'Khoản chi',
+                variant: AppButtonVariant.secondary,
+                onPressed: () async {
+                  await context.push('/home/expenses');
+                  if (!mounted) return;
+                  _refresh();
+                },
+              ),
               if (summary.pendingSyncCount > 0) ...[
                 const SizedBox(height: AppMetrics.touchSpacing),
                 AppButton(

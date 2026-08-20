@@ -18,6 +18,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ReturnsModule } from './modules/returns/returns.module';
 import { TaxFilingModule } from './modules/tax-filing/tax-filing.module';
 import { CustomersModule } from './modules/customers/customers.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { CustomersModule } from './modules/customers/customers.module';
     ReturnsModule,
     TaxFilingModule,
     CustomersModule,
+    ExpensesModule,
   ],
   providers: [
     // Global — tenant scoping is not a per-route opt-in (Section 4.1).

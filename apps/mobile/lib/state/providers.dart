@@ -11,6 +11,7 @@ import '../services/skus_service.dart';
 import '../services/bookings_service.dart';
 import '../services/tax_service.dart';
 import '../services/customers_service.dart';
+import '../services/expenses_service.dart';
 import '../local/local_database.dart';
 import '../local/order_sync_worker.dart';
 
@@ -34,3 +35,4 @@ final skusServiceProvider = Provider((ref) => SkusService(ref.watch(apiClientPro
 final bookingsServiceProvider = Provider((ref) => BookingsService(ref.watch(apiClientProvider)));
 final taxServiceProvider = Provider((ref) => TaxService(ref.watch(apiClientProvider)));
 final customersServiceProvider = Provider((ref) => CustomersService(ref.watch(apiClientProvider)));
+final expensesServiceProvider = Provider((ref) => ExpensesService(ref.watch(apiClientProvider)));
