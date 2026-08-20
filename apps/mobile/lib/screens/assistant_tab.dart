@@ -51,9 +51,9 @@ class _AssistantTabState extends ConsumerState<AssistantTab> {
     _scrollToBottom();
 
     try {
-      final reply = await ref.read(conversationServiceProvider).sendMessage(conversationId, text);
+      final result = await ref.read(conversationServiceProvider).sendMessage(conversationId, text);
       setState(() {
-        _messages.add(ConversationMessage(role: MessageRole.assistant, content: reply));
+        _messages.add(ConversationMessage(role: MessageRole.assistant, content: result.assistantMessage));
         _isWaitingReply = false;
       });
     } catch (_) {

@@ -47,10 +47,10 @@ describe('agentConversationWorkflow', () => {
       });
 
       const reply1 = await handle.executeUpdate(sendMessageUpdate, { args: ['hello'] });
-      expect(reply1).toBe('echo: hello');
+      expect(reply1).toEqual({ assistantMessage: 'echo: hello' });
 
       const reply2 = await handle.executeUpdate(sendMessageUpdate, { args: ['how are you'] });
-      expect(reply2).toBe('echo: how are you');
+      expect(reply2).toEqual({ assistantMessage: 'echo: how are you' });
 
       const history = await handle.query(getHistoryQuery);
       expect(history).toEqual([
@@ -59,6 +59,34 @@ describe('agentConversationWorkflow', () => {
         { role: 'user', content: 'how are you' },
         { role: 'assistant', content: 'echo: how are you' },
       ]);
+
+      await handle.terminate('test cleanup');
+    });
+  });
+
+  it('carries a Generative UI step descriptor through the Update result when the Activity returns one', async () => {
+    const taskQueue = `test-${uuidv7()}`;
+    const worker = await Worker.create({
+      connection: testEnv.nativeConnection,
+      taskQueue,
+      workflowsPath: join(__dirname, '../src/temporal/workflows/index.ts'),
+      activities: {
+        runAgentTurn: async () => ({ assistantMessage: 'Anh/chị đang kinh doanh ngành gì?', step: { inputType: 'choice', options: ['Quán ăn', 'Nông sản', 'Du lịch'] } }),
+      },
+    });
+
+    await worker.runUntil(async () => {
+      const handle = await testEnv.client.workflow.start(agentConversationWorkflow, {
+        workflowId: `wf-step-${uuidv7()}`,
+        taskQueue,
+        args: ['tenant-123', 'onboarding'],
+      });
+
+      const reply = await handle.executeUpdate(sendMessageUpdate, { args: ['Xin chào'] });
+      expect(reply).toEqual({
+        assistantMessage: 'Anh/chị đang kinh doanh ngành gì?',
+        step: { inputType: 'choice', options: ['Quán ăn', 'Nông sản', 'Du lịch'] },
+      });
 
       await handle.terminate('test cleanup');
     });

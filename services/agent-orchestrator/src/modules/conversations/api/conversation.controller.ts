@@ -22,8 +22,8 @@ export class ConversationController {
     @Param('conversationId') conversationId: string,
     @Body() dto: SendMessageDto,
   ): Promise<SendMessageResponseDto> {
-    const assistantMessage = await this.conversationService.sendMessage(tenantId, conversationId, dto.message);
-    return { assistantMessage };
+    const { assistantMessage, step } = await this.conversationService.sendMessage(tenantId, conversationId, dto.message);
+    return { assistantMessage, ...(step ? { step } : {}) };
   }
 
   @Get(':conversationId')

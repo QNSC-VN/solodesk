@@ -1,5 +1,6 @@
 import 'api_client.dart';
 import '../models/conversation_message.dart';
+import '../models/step_descriptor.dart';
 
 /// Calls agent-orchestrator's real `/v1/conversations*` endpoints — same
 /// bearer token as backend-api (one identity provider across services).
@@ -14,11 +15,11 @@ class ConversationService {
         (json) => (json as Map<String, dynamic>)['conversationId'] as String,
       );
 
-  Future<String> sendMessage(String conversationId, String message) => _client.post(
+  Future<SendMessageResult> sendMessage(String conversationId, String message) => _client.post(
         ApiTarget.agentOrchestrator,
         '/conversations/$conversationId/messages',
         {'message': message},
-        (json) => (json as Map<String, dynamic>)['assistantMessage'] as String,
+        (json) => SendMessageResult.fromJson(json as Map<String, dynamic>),
       );
 
   Future<List<ConversationMessage>> getHistory(String conversationId) => _client.get(

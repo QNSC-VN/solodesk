@@ -1,5 +1,6 @@
 import { proxyActivities, defineUpdate, defineQuery, setHandler, condition } from '@temporalio/workflow';
 import type * as activities from '../activities';
+import type { StepDescriptor } from '../activities';
 
 const { runAgentTurn } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 seconds',
@@ -11,7 +12,13 @@ export interface ConversationMessage {
   content: string;
 }
 
-export const sendMessageUpdate = defineUpdate<string, [string]>('sendMessage');
+export interface SendMessageResult {
+  assistantMessage: string;
+  /** Generative-UI step descriptor (onboarding mode only) — see `present-step.tool.ts`. */
+  step?: StepDescriptor;
+}
+
+export const sendMessageUpdate = defineUpdate<SendMessageResult, [string]>('sendMessage');
 export const getHistoryQuery = defineQuery<ConversationMessage[]>('getHistory');
 
 const IDLE_TIMEOUT = '24 hours';
@@ -46,12 +53,12 @@ export async function agentConversationWorkflow(tenantId: string, mode: 'assista
   const history: ConversationMessage[] = [];
   let messageReceived = false;
 
-  setHandler(sendMessageUpdate, async (userMessage: string): Promise<string> => {
-    const { assistantMessage } = await runAgentTurn({ tenantId, history, userMessage, mode });
+  setHandler(sendMessageUpdate, async (userMessage: string): Promise<SendMessageResult> => {
+    const { assistantMessage, step } = await runAgentTurn({ tenantId, history, userMessage, mode });
     history.push({ role: 'user', content: userMessage });
     history.push({ role: 'assistant', content: assistantMessage });
     messageReceived = true;
-    return assistantMessage;
+    return { assistantMessage, ...(step ? { step } : {}) };
   });
 
   setHandler(getHistoryQuery, () => history);

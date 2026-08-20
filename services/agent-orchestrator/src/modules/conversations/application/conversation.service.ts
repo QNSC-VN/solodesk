@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { getTemporalClient } from '../../../temporal/client';
-import { agentConversationWorkflow, sendMessageUpdate, getHistoryQuery, type ConversationMessage } from '../../../temporal/workflows/agent-conversation.workflow';
+import {
+  agentConversationWorkflow,
+  sendMessageUpdate,
+  getHistoryQuery,
+  type ConversationMessage,
+  type SendMessageResult,
+} from '../../../temporal/workflows/agent-conversation.workflow';
 
 function workflowId(tenantId: string, conversationId: string): string {
   return `agent-conv-${tenantId}-${conversationId}`;
@@ -30,7 +36,7 @@ export class ConversationService {
     return { conversationId };
   }
 
-  async sendMessage(tenantId: string, conversationId: string, message: string): Promise<string> {
+  async sendMessage(tenantId: string, conversationId: string, message: string): Promise<SendMessageResult> {
     const client = await getTemporalClient();
     const handle = client.getHandle(workflowId(tenantId, conversationId));
     try {
