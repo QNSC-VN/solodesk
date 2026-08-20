@@ -2849,3 +2849,59 @@ correctly showed the exemption banner and zeroed GTGT/TNCN for real
 under-200M revenue; recorded a real filing, confirmed via direct
 Postgres/API query it landed exactly once; reproduced the duplicate-
 filing 409 directly.
+
+## Customer aggregate — backlog gap #2, deliberately NOT a stored entity
+
+Real research before writing any code found the CEO mockup's own
+"Khách hàng" screen has **no stored customer entity at all** —
+`sm-domain.js`'s `customers()`/`customerDetail()` are a derived view,
+grouping `t.orders`/`t.invoices`/`t.bookings`/`t.receivables` by an exact
+string match on a free-text `buyer`/`guest` field, computed fresh on
+every render. Real backend-api confirmed the same shape: `sales.orders`'
+`customerName` and `booking.bookings`' `customerName` are both plain
+text columns, no `customer_id` anywhere in either schema, and a
+whole-repo grep for "customer" outside those two columns found nothing.
+
+**v1 ports that SAME derived-aggregate shape as a real backend
+computation — deliberately no new table, no migration, no `customer_id`
+threaded through order/booking creation.** This carries over the
+mockup's own real limitation honestly: two orders with slightly
+different spellings of one person's name show up as two separate
+customers — fuzzy matching/merging is a real, separate, deliberately
+deferred concern (would need a genuine stored entity to solve properly).
+
+New `services/backend-api/src/modules/customers/` module (no
+`domain/ports` DI needed beyond the usual repository token):
+`CustomerService.listCustomers` aggregates confirmed-only orders (same
+`status = 'confirmed'` convention `tax-filing`'s `RevenueDrizzleRepository`
+already established — a cancelled/returned order never became real
+business for this customer) grouped by `customerName`, joined with a
+separate booking-count-by-name query (bookings carry no status filter —
+the mockup's own tally doesn't discriminate by booking status either),
+computing total spent, order count, first/last order date, and a
+"primary channel" (the channel with the most orders for that name, ties
+broken alphabetically for a deterministic result). `getCustomerDetail`
+returns the real matching orders + bookings for an exact name — a name
+with zero real history returns an honest empty detail, never a 404 (a
+name that appears once with no other data is a legitimate real state,
+not an error). `GET /v1/customers/detail?name=` uses a query param, not
+a path param — Vietnamese names can contain characters that don't
+belong in a URL path segment.
+
+Mobile: two new pushed screens, `CustomersScreen` (`/home/customers`,
+list sorted highest-spender-first, reached from a new Home quick
+action) and `CustomerDetailScreen` (`/home/customers/:name`, the name
+`Uri.encodeComponent`-ed when pushed) — both the exact same Card/
+ListTile/`StatusBadge` conventions `OrdersTab`/`OrderDetailScreen`
+already established, no new UI pattern introduced.
+
+Verified for real: backend-api typecheck clean; the full e2e suite
+(103/103, including 6 new `customers.e2e-spec.ts` cases — real
+aggregate math across 3 orders on one channel-majority customer,
+orders-with-no-name correctly excluded entirely, spend-descending sort,
+a booking-only customer with zero orders, exact-match detail history,
+and a cancelled order correctly excluded from spend). `flutter analyze`/
+`flutter test` clean. Real manual check via `curl` against the actual
+smoke-test tenant's real order data, then a real emulator pass: the
+list screen and detail screen both rendered the real aggregate and real
+order history correctly.
