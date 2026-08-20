@@ -110,13 +110,34 @@ real regression in exactly the audience this redesign is for.
 - Bottom nav, 4 tabs max (ui-ux-pro-max's own `bottom-nav-limit` rule):
   **Trang chủ** (Home) / **Đơn hàng** (Orders) / **Trợ lý AI** (AI
   assistant — the default/`assistant` mode conversation, read-only tools)
-  / **Thông báo** (Notifications).
-- Home tab: today's real numbers only — today's revenue, a low-stock
-  flag if any SKU is near zero, unread notification count. NOT the full
-  orders/invoices/stock DataTable parity web-accounting has — that's the
-  accountant/staff persona's tool, this is the owner's at-a-glance screen.
-  One real number per card, large type, no dense table on this persona's
-  primary surface.
+  / **Thông báo** (Notifications). Order detail/create and the stock list
+  are real PUSHED screens (`context.push`), not additional bottom-nav
+  tabs — adding a 5th tab would break the tab-limit rule; a quick-action
+  button on Home and a FAB on the Orders tab reach them instead.
+- Home tab: today's real numbers (revenue, low-stock count, unread
+  notifications), two quick-action buttons (Tạo đơn hàng / Xem tồn kho),
+  a real 7-day revenue trend chart, and the 3 most recent orders. Still
+  NOT the full orders/invoices/stock DataTable parity web-accounting
+  has — that's the accountant/staff persona's tool, this is the owner's
+  at-a-glance screen. One real number per stat card, large type; the
+  trend/recent-orders sections only render once there's real data to
+  show (never a chart or list stretched over fake/absent points).
+- Orders tab: a real create flow (SKU picker + quantity + optional
+  customer name, reachable via the tab's own FAB or Home's quick action)
+  and a real detail screen (every order line, not just the list row's
+  aggregate total) — the first genuinely CRUD, not read-only, screens in
+  this app besides onboarding itself.
+- Stock: a real, read-only list (`GET /v1/lots/stock-summary`, the same
+  source Home's low-stock count already uses) — reachable from Home's
+  quick action, matching `web-accounting`'s stock page data but without
+  its editing affordances (this persona is the owner glancing at levels,
+  not the accountant managing them).
+
+**Sales trend chart** — a real 7-day line chart (`fl_chart`), only
+rendered once ≥4 of those days have real revenue (`ui-ux-pro-max`'s own
+chart guidance: fewer real points reads as noise, not a trend — a stat
+card is the honest choice below that threshold, which is exactly what a
+fresh tenant already sees via the 3 stat cards above it).
 
 ---
 
@@ -175,6 +196,8 @@ TOKENS (`packages/ui-kit`) are shared.
   platform.
 - **`EmptyState`** — title + body + (optional) one action button, same
   "never a blank screen" rule as the web `EmptyState` component.
+- **`SalesTrendChart`** — a real 7-day `fl_chart` line chart (Home tab
+  only), see the Motion/chart-guidance note above for when it's shown.
 - **`HomeSummaryCard`** — one real number, one label, optional trend
   arrow — the Home tab's one repeating shape.
 - **`BottomNavShell`** — the 4-tab shell described above.

@@ -167,7 +167,13 @@ GitHub repo, multiple independently-deployable services.
   tenant (agent-orchestrator's onboarding copilot, gained a 4th tool,
   `complete_onboarding`, so a real completion signal — `activatedAt` —
   now exists at all; see CLAUDE.md), and a 4-tab home shell (Trang chủ/
-  Đơn hàng/Trợ lý AI/Thông báo) once onboarded. No BFF needed here (no
+  Đơn hàng/Trợ lý AI/Thông báo) once onboarded — onboarding's own
+  free-text questions were later redesigned into real tappable buttons/
+  a form ("Generative UI", `present_step` tool) after user feedback and
+  2026 UX research on this exact pattern. Home now also shows a real
+  7-day sales trend and recent orders; Orders gained a real create flow
+  and a detail screen; a Stock screen rounds it out — all pushed screens,
+  not more bottom-nav tabs (stays at 4). No BFF needed here (no
   browser CORS/XSS surface for a native app) — calls backend-api/
   agent-orchestrator directly with a token in `flutter_secure_storage`.
   PowerSync offline-first sync and Vietnamese voice input are real,

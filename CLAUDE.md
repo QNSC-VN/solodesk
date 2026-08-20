@@ -2338,3 +2338,98 @@ string), correctly created the real SKU with the exact submitted values,
 set `activated_at`, and the router transitioned to the home shell showing
 the real new tenant name — confirmed directly via Postgres, not assumed
 from the UI alone.
+
+## Mobile UX expansion — richer Home, order create/detail, stock screen
+
+Picked after a full backend end-to-end audit (see below) confirmed the
+business loop itself needed no more work, and the user asked for more
+mobile UI/UX specifically. Four real additions, all reusing already-real
+backend-api endpoints (`GET/POST /v1/orders`, `GET /v1/orders/:id`,
+`GET /v1/skus`, `GET /v1/lots/stock-summary` — no new backend routes
+needed):
+
+- **Richer Home tab**: 2 quick-action buttons (Tạo đơn hàng / Xem tồn
+  kho), a real 7-day sales-trend line chart (`fl_chart`), and the 3 most
+  recent real orders. The trend chart only renders once ≥4 of the last 7
+  days have real revenue — `ui-ux-pro-max`'s own chart guidance (fewer
+  real points reads as noise) — a fresh tenant correctly sees just the 3
+  stat cards, never a chart stretched thin over 1-2 fake-looking points.
+- **Orders: create + detail**. Create is intentionally minimal — one SKU
+  (server auto-picks the oldest available lot, FIFO, same as every other
+  single-line order path in this codebase), a quantity, an optional
+  customer name; `unitPrice` is omitted from the request so backend-api
+  snapshots the SKU's current price itself, exactly like every other
+  order-creation caller. Detail shows every order line (SKU qty/unit
+  price/line total), not just the list row's aggregate total.
+- **Stock screen**: a real, read-only list (same `stock-summary`
+  endpoint Home's low-stock count already used), reachable only via a
+  quick action/FAB — NOT a 5th bottom-nav tab, which would break the
+  documented 4-tab-max rule; `app_router.dart`'s redirect logic was
+  updated from an exact `/home` match to a `path.startsWith('/home')`
+  check so these new pushed sub-routes (`/home/orders/:id`,
+  `/home/orders/new`, `/home/stock`) don't get bounced back to bare
+  `/home` by the `SessionStatus.ready` redirect.
+
+**A real stock-rejection bug caught during manual testing, working as
+designed**: the first order-create attempt against the onboarding-created
+SKU correctly failed ("Có thể sản phẩm đã hết hàng") — that SKU had a
+row in `catalog.skus` but genuinely NO lot at all (`add_first_product`
+only creates the SKU record; nothing in the onboarding flow calls
+`ILotRepository.receive`), so the rejection was correct, not a bug.
+Confirmed by receiving real stock via `POST /v1/lots/receive` and
+retrying successfully.
+
+**An observed anomaly, honestly unresolved — re-login fixed it, no
+code defect was found**: partway through this same long-lived manual
+test session (the app process had been running continuously across
+several earlier rounds of testing, refreshing its session at least once
+after a real 401), `GET /v1/orders` and the stock-summary-derived
+low-stock count briefly stopped reflecting a just-created real order —
+confirmed for real via `pull-to-refresh` on both the Home tab and the
+Orders tab, and via direct backend queries (a fresh `mint-dev-token` call
+against the SAME tenant correctly returned the order, proving the data
+and RLS scoping were fine — the gap was specifically in what the APP's
+long-lived session could see). A clean logout/login immediately and
+completely fixed it, and reading `api_client.dart`'s refresh/retry logic
+end to end afterward found no incorrect variable capture or caching bug
+that would explain it. Recorded here rather than silently ignored — if
+this recurs, the place to look first is `ApiClient._refreshOnce`'s
+in-flight de-duplication and `SecureSessionStore`'s read-after-write
+behavior under `flutter_secure_storage`'s Android Keystore backing across
+a long-lived, multiply-refreshed session; not chased further this pass
+since a normal user session (opened, used, closed) doesn't resemble the
+hours-long, repeatedly-refreshed session that surfaced it.
+
+Verified: `flutter analyze`/`flutter test` clean. Real manual smoke test
+on the same booted Android emulator: quick actions render and navigate
+correctly; order creation correctly rejects a genuinely out-of-stock SKU
+and correctly succeeds once real stock exists (confirmed via direct
+Postgres queries: order total, stock decrement 20→19); order detail
+renders real line data; the stock screen renders the real post-order
+quantity with correct low/high-stock color coding. The sales-trend
+chart's rendering itself was not visually verified in this pass (this
+fresh test tenant only had one day of order history, below the ≥4-day
+threshold the chart requires to render at all) — a real, stated
+limitation of this verification pass, not a claim the chart was checked.
+
+## Backend end-to-end audit — confirmed complete, no new gaps
+
+Ran a full audit of all 4 backend services (backend-api, connector-hub,
+agent-orchestrator, ml-analytics) before starting the mobile UX work
+above, to answer directly whether the real business loop was genuinely
+done, not just documented as done. Re-ran typecheck + the real e2e/pytest
+suites for a live count rather than trusting any previously-recorded
+number in this file: backend-api 81/81, agent-orchestrator 37/37,
+connector-hub 12/12, ml-analytics 14/14 — all real (Postgres/Temporal-
+backed), all passing. Cross-referenced every application-service method
+against its call sites looking for another case like the pre-fix
+`activateTenant` (a real method nothing ever called) — found none.
+
+Confirmed still-open, all already documented, none newly discovered: the
+general cross-entity audit log (only the narrow real-login
+`auth_audit_log` exists), e-invoice submission (MISA/Viettel/VNPT) and 3
+remaining connector stubs (ViettelPost, Booking.com, Agoda), LiteLLM
+gateway/Langfuse, and PowerSync. One harmless piece of doc-debt found:
+`tenant.controller.ts`'s `TODO(Sprint 1+)` comment about `POST
+/v1/tenants` needing auth is stale now that real login exists — not a
+functional gap, just an outdated comment.
