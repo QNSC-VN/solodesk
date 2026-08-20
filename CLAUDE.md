@@ -2905,3 +2905,60 @@ and a cancelled order correctly excluded from spend). `flutter analyze`/
 smoke-test tenant's real order data, then a real emulator pass: the
 list screen and detail screen both rendered the real aggregate and real
 order history correctly.
+
+## Expense domain — backlog gap #3
+
+Real research before writing any code found the CEO mockup's own
+"Khoản chi" screen has a fixed 8-category set (`LOAI_CHI`: packaging,
+transport, utilities, rent, labor, equipment, raw materials, other), an
+optional documentation-type field (invoice/cash-voucher/none — feeds a
+real compliance warning, "won't be deductible once formalized," never
+blocking the write), a free-text (not FK) supplier field, and a
+personal-wallet flag (a bookkeeping-hygiene warning, also never
+blocking). No recurring-expense concept exists anywhere in the mockup —
+rent just gets manually re-entered each month like anything else, so
+v1 doesn't invent automation the product's own spec never called for.
+Confirmed architecturally separate from `procurement`'s `PurchaseNote`
+— every purchase-note line requires a real SKU/lot and receives actual
+stock (COGS-with-inventory-effect); this is non-inventory operating
+spend with no SKU/lot involved at all, genuinely new ground, correctly
+NOT reusing the purchase-note flow.
+
+New schema `expenses` (migration `0016`), one table — `category` and
+`documentation` are plain `text` + `$type<T>()` closed unions validated
+by `class-validator`'s `@IsIn`, the SAME pattern `sales.orders.status`/
+`sales.returns.refund_method` already use, not a reference table like
+`tax.rate_groups` (no per-category rate/label data to store here). RLS
++ grant copied verbatim from `tax.filings` (`0015`'s own tenant-scoped
+template). New `services/backend-api/src/modules/expenses/` module,
+`ExpenseService.recordExpense` — `withIdempotency` + `withTenantTransaction`,
+same shape as every other create-flow in this codebase.
+`getSummary` computes the mockup's own `chiSummary()` shape (total,
+count, per-category breakdown, no-documentation total, personal-wallet
+total) in application code over the real filtered list — deliberately
+NOT a SQL aggregation query like `customers`/`tax-filing` need, since a
+single household's own expense volume is small; defaults to the
+current calendar month when no explicit `from`/`to` is given (an
+unbounded all-time total is a less useful default for a spend summary).
+
+Mobile: `ExpensesScreen` (`/home/expenses`, list + summary, reached
+from a new full-width Home quick action) and `ExpenseCreateScreen`
+(`/home/expenses/new`, pushed from the list's FAB) — category via a
+`DropdownButtonFormField` (8 options, matching `OrderCreateScreen`'s
+own SKU-picker convention), documentation type via `ChoiceButtons`
+(reused from Generative UI, defaults to "Không có" — an absent receipt
+is a real, common state, never invented as present), personal-wallet
+via a plain `SwitchListTile`.
+
+Verified for real: backend-api typecheck clean; the full e2e suite
+(108/108, including 5 new `expenses.e2e-spec.ts` cases — defaults on a
+minimal record, an idempotent-retry replay, a real rejected non-positive
+amount, the full summary math including both real compliance-flag
+totals, and an explicit date-window filter). Migration `0016` applied
+against the real dev Postgres. `flutter analyze`/`flutter test` clean.
+Real manual check via `curl` against the actual smoke-test tenant (a
+real expense recorded, listed, and summarized correctly), then a real
+emulator pass creating a second expense through the actual form and
+confirming — on a cold app restart, the definitive check — both
+expenses, the correct category breakdown, and the correct total all
+render exactly right.
