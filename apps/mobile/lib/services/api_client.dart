@@ -41,12 +41,14 @@ class ApiClient {
 
   Future<T> get<T>(ApiTarget target, String path, T Function(dynamic) parse) => _send(target, 'GET', path, null, parse);
 
-  Future<T> post<T>(ApiTarget target, String path, Object? body, T Function(dynamic) parse) => _send(target, 'POST', path, body, parse);
+  Future<T> post<T>(ApiTarget target, String path, Object? body, T Function(dynamic) parse, {Map<String, String>? headers}) =>
+      _send(target, 'POST', path, body, parse, extraHeaders: headers);
 
-  Future<T> _send<T>(ApiTarget target, String method, String path, Object? body, T Function(dynamic) parse, {bool isRetry = false}) async {
+  Future<T> _send<T>(ApiTarget target, String method, String path, Object? body, T Function(dynamic) parse,
+      {bool isRetry = false, Map<String, String>? extraHeaders}) async {
     final token = await _store.accessToken;
     final uri = Uri.parse('${_baseUrl(target)}$path');
-    final headers = {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
+    final headers = {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token', ...?extraHeaders};
 
     final res = method == 'GET'
         ? await http.get(uri, headers: headers)
@@ -55,7 +57,7 @@ class ApiClient {
     if (res.statusCode == 401 && !isRetry) {
       final refreshed = await _refreshOnce();
       if (!refreshed) throw SessionExpiredException();
-      return _send(target, method, path, body, parse, isRetry: true);
+      return _send(target, method, path, body, parse, isRetry: true, extraHeaders: extraHeaders);
     }
 
     if (res.statusCode < 200 || res.statusCode >= 300) {

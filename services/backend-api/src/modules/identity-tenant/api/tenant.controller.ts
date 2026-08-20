@@ -30,10 +30,14 @@ export class TenantController {
   @Public()
   @SkipTenantContext()
   @ApiOperation({ summary: 'Onboard a new household/business tenant (runs before any auth/tenant context exists)' })
-  // TODO(Sprint 1+): this is genuinely public today (no login flow exists to
-  // gate it behind). Once staff/admin auth is real, this almost certainly
-  // needs to require an authenticated program-staff principal — Mục IV.6
-  // "cầm tay chỉ việc" implies staff-assisted onboarding, not pure self-serve.
+  // TODO(Sprint 1+): still genuinely public today — real login now exists
+  // (src/modules/auth), but real self-serve signup (POST /v1/auth/signup)
+  // creates its own tenant directly via SignupService, never through this
+  // route. This route is the ORPHANED-tenant path: no owning user gets
+  // attached, so it's really a manual/ops onboarding entry point today, not
+  // a real product flow. Once staff/admin auth is real, this almost
+  // certainly needs to require an authenticated program-staff principal —
+  // Mục IV.6 "cầm tay chỉ việc" implies staff-assisted onboarding, not this.
   async createTenant(@Body() dto: CreateTenantDto): Promise<TenantResponseDto> {
     const tenant = await this.tenantService.createTenant(dto);
     return toTenantDto(tenant);

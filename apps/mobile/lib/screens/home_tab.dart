@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../models/order.dart';
 import '../state/providers.dart';
 import '../widgets/home_summary_card.dart';
+import '../widgets/sales_trend_chart.dart';
+import '../widgets/status_badge.dart';
+import '../widgets/app_button.dart';
 import '../theme/app_theme.dart';
 
-/// Today's real numbers only — NOT the full orders/invoices/stock
-/// DataTable parity `web-accounting` has (that's the accountant/staff
-/// persona's tool). One real number per card, large type
-/// (`design-system/solodesk/pages/mobile.md`'s Mode 2 spec).
+/// Today's real numbers, a real 7-day trend (once there's enough history
+/// to be honest — see `SalesTrendChart`'s own doc comment), the most
+/// recent real orders, and two quick actions — still NOT the full
+/// orders/invoices/stock DataTable parity `web-accounting` has (that's
+/// the accountant/staff persona's tool), just enough for an owner's
+/// at-a-glance screen plus a fast path into the 2 things they do most:
+/// record a sale, check stock.
 class HomeTab extends ConsumerStatefulWidget {
   const HomeTab({super.key});
 
@@ -30,7 +38,8 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     final unreadCount = await ref.read(notificationsServiceProvider).getUnreadCount();
 
     final now = DateTime.now();
-    final todaysOrders = orders.where((o) => o.status != 'cancelled' && _isSameDay(o.createdAt.toLocal(), now));
+    final validOrders = orders.where((o) => o.status != 'cancelled').toList();
+    final todaysOrders = validOrders.where((o) => _isSameDay(o.createdAt.toLocal(), now));
     final todaysRevenue = todaysOrders.fold<double>(0, (sum, o) => sum + (double.tryParse(o.totalAmount) ?? 0));
 
     // A real but simple threshold — documented as such, not tuned per-SKU
@@ -38,7 +47,23 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     const lowStockThreshold = 5;
     final lowStockCount = stock.where((s) => s.isActive && (double.tryParse(s.totalAvailable) ?? 0) <= lowStockThreshold).length;
 
-    return _HomeSummary(todaysRevenue: todaysRevenue, lowStockCount: lowStockCount, unreadCount: unreadCount);
+    final last7Days = List.generate(7, (i) => DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i)));
+    final dailyRevenue = last7Days
+        .map((day) => validOrders.where((o) => _isSameDay(o.createdAt.toLocal(), day)).fold<double>(0, (sum, o) => sum + (double.tryParse(o.totalAmount) ?? 0)))
+        .toList();
+    final daysWithRevenue = dailyRevenue.where((v) => v > 0).length;
+
+    final recentOrders = [...validOrders]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return _HomeSummary(
+      todaysRevenue: todaysRevenue,
+      lowStockCount: lowStockCount,
+      unreadCount: unreadCount,
+      dailyRevenue: dailyRevenue,
+      dayLabels: last7Days.map((d) => '${d.day}/${d.month}').toList(),
+      showTrend: daysWithRevenue >= 4, // chart guidance: fewer real points reads as noise, not a trend
+      recentOrders: recentOrders.take(3).toList(),
+    );
   }
 
   bool _isSameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
@@ -48,6 +73,8 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     setState(() => _future = future);
     await future;
   }
+
+  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +90,28 @@ class _HomeTabState extends ConsumerState<HomeTab> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      label: 'Tạo đơn hàng',
+                      onPressed: () async {
+                        final created = await context.push<bool>('/home/orders/new');
+                        if (created == true) _refresh();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: AppMetrics.touchSpacing),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Xem tồn kho',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: () => context.push('/home/stock'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               HomeSummaryCard(
                 label: 'Doanh thu hôm nay',
                 value: '${summary.todaysRevenue.toStringAsFixed(0)} đ',
@@ -83,6 +132,39 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                 icon: Icons.notifications_outlined,
                 accentColor: AppColors.secondary,
               ),
+              if (summary.showTrend) ...[
+                const SizedBox(height: 20),
+                Text('Doanh thu 7 ngày qua', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+                    child: SalesTrendChart(dailyRevenue: summary.dailyRevenue, dayLabels: summary.dayLabels),
+                  ),
+                ),
+              ],
+              if (summary.recentOrders.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text('Đơn hàng gần đây', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                for (final order in summary.recentOrders)
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      onTap: () => context.push('/home/orders/${order.id}'),
+                      title: Text(order.customerName ?? 'Khách lẻ'),
+                      subtitle: Text('${order.createdAt.toLocal()}'.split(' ').first),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(_formatVnd(order.totalAmount), style: Theme.of(context).textTheme.titleMedium),
+                          StatusBadge(status: order.status),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ],
           );
         },
@@ -95,5 +177,18 @@ class _HomeSummary {
   final double todaysRevenue;
   final int lowStockCount;
   final int unreadCount;
-  _HomeSummary({required this.todaysRevenue, required this.lowStockCount, required this.unreadCount});
+  final List<double> dailyRevenue;
+  final List<String> dayLabels;
+  final bool showTrend;
+  final List<Order> recentOrders;
+
+  _HomeSummary({
+    required this.todaysRevenue,
+    required this.lowStockCount,
+    required this.unreadCount,
+    required this.dailyRevenue,
+    required this.dayLabels,
+    required this.showTrend,
+    required this.recentOrders,
+  });
 }

@@ -5,13 +5,20 @@ import '../state/session_controller.dart';
 import '../screens/login_screen.dart';
 import '../screens/onboarding_chat_screen.dart';
 import '../screens/home_shell.dart';
+import '../screens/order_detail_screen.dart';
+import '../screens/order_create_screen.dart';
+import '../screens/stock_screen.dart';
 
-/// Three real routes, `SessionState.status` decides which one — the
-/// redirect logic itself, not each screen guessing whether it should be
-/// showing. Refreshes on every `sessionControllerProvider` change (login,
-/// logout, and the onboarding screen's post-reply re-check), so a status
-/// flip (e.g. `needsOnboarding` -> `ready`) navigates immediately with no
-/// manual `context.go(...)` call needed at the call site.
+/// Three real top-level destinations, `SessionState.status` decides which
+/// one — the redirect logic itself, not each screen guessing whether it
+/// should be showing. Refreshes on every `sessionControllerProvider`
+/// change (login, logout, and the onboarding screen's post-reply
+/// re-check), so a status flip (e.g. `needsOnboarding` -> `ready`)
+/// navigates immediately with no manual `context.go(...)` call needed at
+/// the call site. `/home/*` sub-routes (order detail/create, stock) are
+/// real pushed screens reached via `context.push(...)` from inside the
+/// home shell's tabs — the redirect check matches on a PREFIX for `ready`
+/// so pushing one of them doesn't get bounced back to bare `/home`.
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     refreshListenable: _SessionListenable(ref),
@@ -24,7 +31,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (status == SessionStatus.unauthenticated) return path == '/login' ? null : '/login';
       if (status == SessionStatus.needsOnboarding) return path == '/onboarding' ? null : '/onboarding';
-      if (status == SessionStatus.ready) return path == '/home' ? null : '/home';
+      if (status == SessionStatus.ready) return path.startsWith('/home') ? null : '/home';
 
       return null;
     },
@@ -32,6 +39,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(path: '/onboarding', builder: (context, state) => const OnboardingChatScreen()),
       GoRoute(path: '/home', builder: (context, state) => const HomeShell()),
+      GoRoute(path: '/home/orders/new', builder: (context, state) => const OrderCreateScreen()),
+      GoRoute(path: '/home/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!)),
+      GoRoute(path: '/home/stock', builder: (context, state) => const StockScreen()),
     ],
   );
 });

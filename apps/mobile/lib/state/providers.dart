@@ -7,6 +7,7 @@ import '../services/conversation_service.dart';
 import '../services/orders_service.dart';
 import '../services/stock_service.dart';
 import '../services/notifications_service.dart';
+import '../services/skus_service.dart';
 
 /// Plain constructor-injected services, one instance per app run — no DI
 /// framework needed for a dependency graph this shallow.
@@ -18,3 +19,4 @@ final conversationServiceProvider = Provider((ref) => ConversationService(ref.wa
 final ordersServiceProvider = Provider((ref) => OrdersService(ref.watch(apiClientProvider)));
 final stockServiceProvider = Provider((ref) => StockService(ref.watch(apiClientProvider)));
 final notificationsServiceProvider = Provider((ref) => NotificationsService(ref.watch(apiClientProvider)));
+final skusServiceProvider = Provider((ref) => SkusService(ref.watch(apiClientProvider)));
