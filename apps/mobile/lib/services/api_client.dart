@@ -58,15 +58,21 @@ class ApiClient {
   Future<T> post<T>(ApiTarget target, String path, Object? body, T Function(dynamic) parse, {Map<String, String>? headers}) =>
       _send(target, 'POST', path, body, parse, extraHeaders: headers);
 
+  Future<T> patch<T>(ApiTarget target, String path, Object? body, T Function(dynamic) parse, {Map<String, String>? headers}) =>
+      _send(target, 'PATCH', path, body, parse, extraHeaders: headers);
+
   Future<T> _send<T>(ApiTarget target, String method, String path, Object? body, T Function(dynamic) parse,
       {bool isRetry = false, Map<String, String>? extraHeaders}) async {
     final token = await _store.accessToken;
     final uri = Uri.parse('${_baseUrl(target)}$path');
     final headers = {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token', ...?extraHeaders};
 
-    final res = method == 'GET'
-        ? await _http.get(uri, headers: headers).timeout(_timeout)
-        : await _http.post(uri, headers: headers, body: body == null ? null : jsonEncode(body)).timeout(_timeout);
+    final encodedBody = body == null ? null : jsonEncode(body);
+    final res = switch (method) {
+      'GET' => await _http.get(uri, headers: headers).timeout(_timeout),
+      'PATCH' => await _http.patch(uri, headers: headers, body: encodedBody).timeout(_timeout),
+      _ => await _http.post(uri, headers: headers, body: encodedBody).timeout(_timeout),
+    };
 
     if (res.statusCode == 401 && !isRetry) {
       final refreshed = await _refreshOnce();

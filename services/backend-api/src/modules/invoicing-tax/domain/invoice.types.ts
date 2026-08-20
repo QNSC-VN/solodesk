@@ -7,6 +7,7 @@ export interface TaxRule {
   industry: TenantIndustry | null; // null = default/fallback rule
   rate: string;
   annualRevenueThreshold: string;
+  exemptionAnnualRevenueThreshold: string;
   effectiveFrom: string;
   effectiveTo: string | null;
 }

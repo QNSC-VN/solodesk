@@ -9,6 +9,7 @@ import '../services/stock_service.dart';
 import '../services/notifications_service.dart';
 import '../services/skus_service.dart';
 import '../services/bookings_service.dart';
+import '../services/tax_service.dart';
 import '../local/local_database.dart';
 import '../local/order_sync_worker.dart';
 
@@ -30,3 +31,4 @@ final stockServiceProvider = Provider((ref) => StockService(ref.watch(apiClientP
 final notificationsServiceProvider = Provider((ref) => NotificationsService(ref.watch(apiClientProvider)));
 final skusServiceProvider = Provider((ref) => SkusService(ref.watch(apiClientProvider), ref.watch(localDatabaseProvider)));
 final bookingsServiceProvider = Provider((ref) => BookingsService(ref.watch(apiClientProvider)));
+final taxServiceProvider = Provider((ref) => TaxService(ref.watch(apiClientProvider)));

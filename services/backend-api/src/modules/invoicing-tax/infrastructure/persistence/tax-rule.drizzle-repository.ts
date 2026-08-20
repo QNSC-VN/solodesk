@@ -12,6 +12,7 @@ function toDomain(row: typeof taxRules.$inferSelect): TaxRule {
     industry: row.industry as TenantIndustry | null,
     rate: row.rate,
     annualRevenueThreshold: row.annualRevenueThreshold,
+    exemptionAnnualRevenueThreshold: row.exemptionAnnualRevenueThreshold,
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
   };

@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipTenantContext } from '../../../platform/skip-tenant-context.decorator';
 import { Public } from '../../../platform/auth/public.decorator';
+import { getCurrentTenantId } from '../../../platform/tenant-context';
 import { TenantService } from '../application/tenant.service';
-import { CreateTenantDto, TenantResponseDto, TenantMemberResponseDto } from './tenant.dto';
+import { CreateTenantDto, UpdateTaxProfileDto, TenantResponseDto, TenantMemberResponseDto } from './tenant.dto';
 import type { Tenant, TenantMember } from '../domain/tenant.types';
 
 function toTenantDto(t: Tenant): TenantResponseDto {
@@ -14,6 +15,7 @@ function toTenantDto(t: Tenant): TenantResponseDto {
     province: t.province,
     activatedAt: t.activatedAt?.toISOString() ?? null,
     isActive: t.isActive,
+    taxGroupDefault: t.taxGroupDefault,
   };
 }
 
@@ -55,5 +57,12 @@ export class TenantController {
   async listMembers(@Param('id', ParseUUIDPipe) id: string): Promise<TenantMemberResponseDto[]> {
     const members = await this.tenantService.listMembers(id);
     return members.map(toMemberDto);
+  }
+
+  @Patch('tax-profile')
+  @ApiOperation({ summary: "Set the caller's own tenant's tax rate-group (Tax/filing v1 — no self-service tenant-mutation route existed before this)" })
+  async updateTaxProfile(@Body() dto: UpdateTaxProfileDto): Promise<TenantResponseDto> {
+    const tenant = await this.tenantService.updateProfile(getCurrentTenantId(), { taxGroupDefault: dto.taxGroupDefault });
+    return toTenantDto(tenant);
   }
 }

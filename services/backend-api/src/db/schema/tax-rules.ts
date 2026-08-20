@@ -19,5 +19,9 @@ export const taxRules = taxSchema.table('tax_rules', {
   annualRevenueThreshold: numeric('annual_revenue_threshold', { precision: 14, scale: 2 }).notNull(),
   effectiveFrom: date('effective_from', { mode: 'string' }).notNull(),
   effectiveTo: date('effective_to', { mode: 'string' }),
+  // The mockup's 200M/year HKD exemption threshold (TAX.nguong.mienThue) —
+  // added alongside the pre-existing 1B e-invoice threshold this table
+  // already carried. Same "NOT verified statutory" disclaimer applies.
+  exemptionAnnualRevenueThreshold: numeric('exemption_annual_revenue_threshold', { precision: 14, scale: 2 }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

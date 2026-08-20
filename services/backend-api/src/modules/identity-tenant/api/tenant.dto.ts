@@ -24,6 +24,15 @@ export class TenantResponseDto {
   @ApiProperty() province!: string;
   @ApiProperty({ nullable: true }) activatedAt!: string | null;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty({ nullable: true, enum: ['phanPhoi', 'sanXuat', 'dichVu', 'khac'] }) taxGroupDefault!: string | null;
+}
+
+const RATE_GROUP_CODES = ['phanPhoi', 'sanXuat', 'dichVu', 'khac'] as const;
+
+export class UpdateTaxProfileDto {
+  @ApiProperty({ enum: RATE_GROUP_CODES })
+  @IsIn(RATE_GROUP_CODES)
+  taxGroupDefault!: (typeof RATE_GROUP_CODES)[number];
 }
 
 export class TenantMemberResponseDto {

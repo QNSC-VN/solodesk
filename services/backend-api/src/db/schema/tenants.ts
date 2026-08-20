@@ -1,4 +1,5 @@
 import { pgSchema, uuid, text, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { rateGroups } from './rate-groups';
 
 /**
  * Dedicated schema so `identity.*` tables are trivially distinguishable from
@@ -17,6 +18,11 @@ export const tenants = identitySchema.table('tenants', {
   province: text('province').notNull().default('gia_lai'),
   activatedAt: timestamp('activated_at', { withTimezone: true }),
   isActive: boolean('is_active').notNull().default(true),
+  // Which single tax.rate_groups row this household's revenue is classified
+  // under — v1's deliberate simplification of the mockup's real per-line/
+  // per-SKU attribution chain (see migration 0015). NULL = not set up yet,
+  // a real state, never a guessed default.
+  taxGroupDefault: text('tax_group_default').references(() => rateGroups.code),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

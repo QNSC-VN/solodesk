@@ -28,6 +28,9 @@ import { INVOICE_REPOSITORY } from './domain/ports/invoice.repository';
   ],
   // INVOICE_REPOSITORY exported too: returns needs IInvoiceRepository
   // directly, same reason ORDER_REPOSITORY/PAYMENT_REPOSITORY are exported.
-  exports: [InvoiceService, InvoicePdfService, INVOICE_REPOSITORY],
+  // TAX_RULE_REPOSITORY exported for tax-filing: TaxEstimateService reuses
+  // the same versioned rate-rule lookup for the HKD exemption threshold,
+  // rather than re-querying tax.tax_rules through a second binding.
+  exports: [InvoiceService, InvoicePdfService, INVOICE_REPOSITORY, TAX_RULE_REPOSITORY],
 })
 export class InvoicingTaxModule {}

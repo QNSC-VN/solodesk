@@ -5,7 +5,7 @@ import { users } from './users';
 /** Dedicated schema, same "own schema" convention as `identity`/`platform`. */
 export const notificationsSchema = pgSchema('notifications');
 
-export type NotificationType = 'EMAIL_VERIFY' | 'PASSWORD_RESET' | 'EINVOICE_THRESHOLD_CROSSED';
+export type NotificationType = 'EMAIL_VERIFY' | 'PASSWORD_RESET' | 'EINVOICE_THRESHOLD_CROSSED' | 'FILING_DEADLINE_APPROACHING';
 
 /**
  * RLS-scoped like every other business-data table (unlike real-login's

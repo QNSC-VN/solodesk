@@ -1,3 +1,5 @@
+import type { RateGroupCode } from '../../../db/schema/rate-groups';
+
 export type TenantIndustry = 'food_beverage' | 'tourism' | 'agriculture';
 export type TenantMemberRole = 'owner' | 'successor' | 'accountant_delegate';
 
@@ -8,6 +10,9 @@ export interface Tenant {
   province: string;
   activatedAt: Date | null;
   isActive: boolean;
+  // Which tax.rate_groups row this household's revenue is classified under
+  // — null = not set up yet, a real state (see migration 0015).
+  taxGroupDefault: RateGroupCode | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +27,7 @@ export interface CreateTenantInput {
 export interface UpdateTenantProfileInput {
   legalName?: string;
   industry?: TenantIndustry;
+  taxGroupDefault?: RateGroupCode;
 }
 
 export interface TenantMember {

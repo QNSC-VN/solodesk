@@ -5,6 +5,11 @@ export interface EmailTemplateVars {
   EMAIL_VERIFY: { verifyUrl: string };
   PASSWORD_RESET: { resetUrl: string };
   EINVOICE_THRESHOLD_CROSSED: { tenantName: string };
+  // v1's filing-deadline reminder is in-app only (FilingDeadlineSweepService
+  // never passes `email` to notify()) — this entry exists purely to satisfy
+  // EMAIL_TEMPLATES' exhaustiveness so a real email channel can be added
+  // later without a template/vars registry gap.
+  FILING_DEADLINE_APPROACHING: { tenantName: string; quarter: number; year: number; deadline: string };
 }
 
 export interface RenderedEmail {
@@ -26,6 +31,10 @@ export const EMAIL_TEMPLATES: {
   EINVOICE_THRESHOLD_CROSSED: ({ tenantName }) => ({
     subject: 'SoloDesk: Doanh nghiệp của bạn cần hóa đơn điện tử',
     html: `<p>Doanh thu lũy kế năm nay của <strong>${tenantName}</strong> đã vượt ngưỡng yêu cầu hóa đơn điện tử. Các hóa đơn tiếp theo sẽ cần phát hành hóa đơn điện tử theo quy định.</p>`,
+  }),
+  FILING_DEADLINE_APPROACHING: ({ tenantName, quarter, year, deadline }) => ({
+    subject: `SoloDesk: Sắp đến hạn kê khai thuế quý ${quarter}/${year}`,
+    html: `<p><strong>${tenantName}</strong> sắp đến hạn kê khai và nộp thuế quý ${quarter}/${year} — hạn ${deadline}. Số liệu tạm tính, cần đối chiếu văn bản hiện hành trước khi nộp.</p>`,
   }),
 };
 

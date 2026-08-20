@@ -16,6 +16,7 @@ function toDto(t: Tenant): TenantResponseDto {
     province: t.province,
     activatedAt: t.activatedAt?.toISOString() ?? null,
     isActive: t.isActive,
+    taxGroupDefault: t.taxGroupDefault,
   };
 }
 

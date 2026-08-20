@@ -12,11 +12,11 @@ import '../theme/app_theme.dart';
 
 /// Today's real numbers, a real 7-day trend (once there's enough history
 /// to be honest — see `SalesTrendChart`'s own doc comment), the most
-/// recent real orders, and two quick actions — still NOT the full
+/// recent real orders, and a quick-action grid — still NOT the full
 /// orders/invoices/stock DataTable parity `web-accounting` has (that's
 /// the accountant/staff persona's tool), just enough for an owner's
-/// at-a-glance screen plus a fast path into the 2 things they do most:
-/// record a sale, check stock, take a booking.
+/// at-a-glance screen plus a fast path into what they do most: record a
+/// sale, check stock, take a booking, check quarterly tax.
 class HomeTab extends ConsumerStatefulWidget {
   const HomeTab({super.key});
 
@@ -146,6 +146,16 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: AppMetrics.touchSpacing),
+              AppButton(
+                label: 'Thuế & khai báo',
+                variant: AppButtonVariant.secondary,
+                onPressed: () async {
+                  await context.push('/home/tax');
+                  if (!mounted) return;
+                  _refresh();
+                },
               ),
               if (summary.pendingSyncCount > 0) ...[
                 const SizedBox(height: AppMetrics.touchSpacing),

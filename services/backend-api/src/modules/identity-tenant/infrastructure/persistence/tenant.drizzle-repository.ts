@@ -14,6 +14,7 @@ function toDomain(row: typeof tenants.$inferSelect): Tenant {
     province: row.province,
     activatedAt: row.activatedAt,
     isActive: row.isActive,
+    taxGroupDefault: row.taxGroupDefault as Tenant['taxGroupDefault'],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -58,6 +59,7 @@ export class TenantDrizzleRepository implements ITenantRepository {
       .set({
         ...(input.legalName !== undefined ? { legalName: input.legalName } : {}),
         ...(input.industry !== undefined ? { industry: input.industry } : {}),
+        ...(input.taxGroupDefault !== undefined ? { taxGroupDefault: input.taxGroupDefault } : {}),
         updatedAt: new Date(),
       })
       .where(eq(tenants.id, id))
