@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/tenant.dart';
 import '../models/session.dart';
+import '../services/api_client.dart';
 import 'providers.dart';
 
 enum SessionStatus { loading, unauthenticated, needsOnboarding, ready }
@@ -45,9 +46,23 @@ class SessionController extends StateNotifier<SessionState> {
     }
     try {
       final tenant = await _ref.read(tenantServiceProvider).getTenant(tenantId);
+      await store.cacheTenant(tenant);
       state = SessionState(status: tenant.isOnboarded ? SessionStatus.ready : SessionStatus.needsOnboarding, tenant: tenant, user: user);
-    } catch (_) {
+    } on SessionExpiredException {
       state = const SessionState(status: SessionStatus.unauthenticated);
+    } catch (_) {
+      // Not a real auth failure (network/timeout/5xx) — a cold app start
+      // with no network must never look like a logout, or the CEO
+      // mockup's own headline "sell while offline" scenario can't even
+      // reach its first screen. Fall back to the last-known tenant; only
+      // a NEVER-successfully-loaded device (no cache at all) has nothing
+      // honest to show and stays unauthenticated.
+      final cached = await store.cachedTenant;
+      if (cached == null) {
+        state = const SessionState(status: SessionStatus.unauthenticated);
+        return;
+      }
+      state = SessionState(status: cached.isOnboarded ? SessionStatus.ready : SessionStatus.needsOnboarding, tenant: cached, user: user);
     }
   }
 

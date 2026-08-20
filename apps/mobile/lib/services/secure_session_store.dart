@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/session.dart';
+import '../models/tenant.dart';
 import 'jwt.dart';
 
 /// Real token storage — `flutter_secure_storage` (Keychain on iOS,
@@ -17,6 +18,7 @@ class SecureSessionStore {
   static const _kCsrfToken = 'sd_csrf_token';
   static const _kExpiresAt = 'sd_expires_at';
   static const _kUser = 'sd_user';
+  static const _kTenant = 'sd_tenant';
 
   Future<void> save(Session session) async {
     final expiresAt = DateTime.now().add(Duration(seconds: session.expiresIn)).millisecondsSinceEpoch;
@@ -59,6 +61,20 @@ class SecureSessionStore {
 
   Future<bool> get hasSession async => (await accessToken) != null;
 
+  /// Last-known tenant snapshot — the offline-first cold-start fallback.
+  /// Without this, `SessionController._loadTenant()` would have to treat
+  /// "app launched with no network" the same as "not logged in" (a real
+  /// bug found via the emulator smoke test: it did, forcing a real logout
+  /// on every offline cold start — exactly the CEO mockup's own headline
+  /// scenario, broken at the very first screen).
+  Future<void> cacheTenant(Tenant tenant) => _storage.write(key: _kTenant, value: jsonEncode(tenant.toJson()));
+
+  Future<Tenant?> get cachedTenant async {
+    final raw = await _storage.read(key: _kTenant);
+    if (raw == null) return null;
+    return Tenant.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+  }
+
   Future<void> clear() async {
     await Future.wait([
       _storage.delete(key: _kAccessToken),
@@ -66,6 +82,7 @@ class SecureSessionStore {
       _storage.delete(key: _kCsrfToken),
       _storage.delete(key: _kExpiresAt),
       _storage.delete(key: _kUser),
+      _storage.delete(key: _kTenant),
     ]);
   }
 }

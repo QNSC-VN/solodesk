@@ -19,4 +19,6 @@ class Tenant {
         industry: json['industry'] as String,
         activatedAt: json['activatedAt'] == null ? null : DateTime.parse(json['activatedAt'] as String),
       );
+
+  Map<String, dynamic> toJson() => {'id': id, 'legalName': legalName, 'industry': industry, 'activatedAt': activatedAt?.toIso8601String()};
 }

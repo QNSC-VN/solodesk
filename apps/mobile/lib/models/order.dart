@@ -19,7 +19,13 @@ class OrderLine {
 }
 
 /// Mirrors backend-api's `OrderResponseDto` (`GET /v1/orders`) — same
-/// fields web-accounting's `lib/orders.ts` `Order` type carries.
+/// fields web-accounting's `lib/orders.ts` `Order` type carries, plus two
+/// local-only additions for offline-first: `syncStatus`/`syncError` are
+/// null for every real server-confirmed order (the remote `fromJson` path
+/// never sets them) and only carry a value for a `LocalOrders` row that
+/// hasn't synced yet (`OrdersService`'s local-DB mapping) — 'pending' or
+/// 'failed', surfaced as a small badge on the Orders tab/Home/detail
+/// screens.
 class Order {
   final String id;
   final String channel;
@@ -28,6 +34,8 @@ class Order {
   final String totalAmount;
   final DateTime createdAt;
   final List<OrderLine> lines;
+  final String? syncStatus;
+  final String? syncError;
 
   Order({
     required this.id,
@@ -37,6 +45,8 @@ class Order {
     required this.totalAmount,
     required this.createdAt,
     required this.lines,
+    this.syncStatus,
+    this.syncError,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(

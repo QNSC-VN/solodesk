@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/order.dart';
+import '../models/stock_summary_item.dart';
 import '../state/providers.dart';
 import '../widgets/home_summary_card.dart';
 import '../widgets/sales_trend_chart.dart';
@@ -33,9 +34,18 @@ class _HomeTabState extends ConsumerState<HomeTab> {
   }
 
   Future<_HomeSummary> _load() async {
+    try {
+      await ref.read(ordersServiceProvider).refreshFromServer();
+      await ref.read(orderSyncWorkerProvider).drainPending();
+    } catch (_) {
+      // offline or a real backend error — local-first read below still renders
+    }
     final orders = await ref.read(ordersServiceProvider).getOrders();
-    final stock = await ref.read(stockServiceProvider).getStockSummary();
-    final unreadCount = await ref.read(notificationsServiceProvider).getUnreadCount();
+    // Stock/notifications stay online-only in this cut (see the
+    // offline-first plan's scope note) — a real cut, but it must degrade
+    // to "unknown" rather than take the whole Home tab down with it.
+    final stock = await ref.read(stockServiceProvider).getStockSummary().catchError((_) => <StockSummaryItem>[]);
+    final unreadCount = await ref.read(notificationsServiceProvider).getUnreadCount().catchError((_) => 0);
 
     final now = DateTime.now();
     final validOrders = orders.where((o) => o.status != 'cancelled').toList();
@@ -54,6 +64,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     final daysWithRevenue = dailyRevenue.where((v) => v > 0).length;
 
     final recentOrders = [...validOrders]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final pendingSyncCount = orders.where((o) => o.syncStatus != null).length;
 
     return _HomeSummary(
       todaysRevenue: todaysRevenue,
@@ -63,6 +74,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
       dayLabels: last7Days.map((d) => '${d.day}/${d.month}').toList(),
       showTrend: daysWithRevenue >= 4, // chart guidance: fewer real points reads as noise, not a trend
       recentOrders: recentOrders.take(3).toList(),
+      pendingSyncCount: pendingSyncCount,
     );
   }
 
@@ -111,6 +123,17 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                   ),
                 ],
               ),
+              if (summary.pendingSyncCount > 0) ...[
+                const SizedBox(height: AppMetrics.touchSpacing),
+                AppButton(
+                  label: 'Hàng đợi gửi đi (${summary.pendingSyncCount})',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: () async {
+                    await context.push('/home/outbound-queue');
+                    _refresh();
+                  },
+                ),
+              ],
               const SizedBox(height: 16),
               HomeSummaryCard(
                 label: 'Doanh thu hôm nay',
@@ -181,6 +204,7 @@ class _HomeSummary {
   final List<String> dayLabels;
   final bool showTrend;
   final List<Order> recentOrders;
+  final int pendingSyncCount;
 
   _HomeSummary({
     required this.todaysRevenue,
@@ -190,5 +214,6 @@ class _HomeSummary {
     required this.dayLabels,
     required this.showTrend,
     required this.recentOrders,
+    required this.pendingSyncCount,
   });
 }

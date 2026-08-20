@@ -8,6 +8,7 @@ import '../screens/home_shell.dart';
 import '../screens/order_detail_screen.dart';
 import '../screens/order_create_screen.dart';
 import '../screens/stock_screen.dart';
+import '../screens/outbound_queue_screen.dart';
 
 /// Three real top-level destinations, `SessionState.status` decides which
 /// one — the redirect logic itself, not each screen guessing whether it
@@ -42,6 +43,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home/orders/new', builder: (context, state) => const OrderCreateScreen()),
       GoRoute(path: '/home/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!)),
       GoRoute(path: '/home/stock', builder: (context, state) => const StockScreen()),
+      GoRoute(path: '/home/outbound-queue', builder: (context, state) => const OutboundQueueScreen()),
     ],
   );
 });

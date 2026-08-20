@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../local/connectivity_service.dart';
+import '../state/providers.dart';
 import '../state/session_controller.dart';
+import '../widgets/offline_banner.dart';
 import 'home_tab.dart';
 import 'orders_tab.dart';
 import 'assistant_tab.dart';
@@ -19,6 +22,7 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
+  bool _didInitialDrain = false;
 
   static const _tabs = [HomeTab(), OrdersTab(), AssistantTab(), NotificationsTab()];
   static const _titles = ['Trang chủ', 'Đơn hàng', 'Trợ lý AI', 'Thông báo'];
@@ -26,6 +30,19 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final tenant = ref.watch(sessionControllerProvider).tenant;
+
+    // Drain any pending local orders once on app start, and again every
+    // real offline→online transition — the two real triggers besides the
+    // Outbound Queue screen's manual "Đồng bộ ngay" (see `OrderSyncWorker`'s
+    // own doc comment for why there's no separate backoff timer).
+    ref.listen(connectivityProvider, (previous, next) {
+      final wasOnline = previous?.valueOrNull ?? true;
+      final isOnline = next.valueOrNull ?? true;
+      if (!_didInitialDrain || (!wasOnline && isOnline)) {
+        _didInitialDrain = true;
+        ref.read(orderSyncWorkerProvider).drainPending();
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -38,7 +55,12 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ),
         ],
       ),
-      body: IndexedStack(index: _index, children: _tabs),
+      body: Column(
+        children: [
+          const OfflineBanner(),
+          Expanded(child: IndexedStack(index: _index, children: _tabs)),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),

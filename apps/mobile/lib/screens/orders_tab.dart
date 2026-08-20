@@ -21,9 +21,20 @@ class _OrdersTabState extends ConsumerState<OrdersTab> {
   void initState() {
     super.initState();
     _future = ref.read(ordersServiceProvider).getOrders();
+    _refresh(); // local-first: show cached orders instantly, then pull-sync in the background
   }
 
+  /// Local-first: read `LocalOrders` immediately, then pull real server
+  /// orders in and drain any pending local ones — a network hiccup here
+  /// never blocks the list from rendering, it only means the pull-sync
+  /// step silently no-ops until the next trigger.
   Future<void> _refresh() async {
+    try {
+      await ref.read(ordersServiceProvider).refreshFromServer();
+      await ref.read(orderSyncWorkerProvider).drainPending();
+    } catch (_) {
+      // offline or a real backend error — local list still renders below
+    }
     final future = ref.read(ordersServiceProvider).getOrders();
     setState(() => _future = future);
     await future;
@@ -79,7 +90,11 @@ class _OrdersTabState extends ConsumerState<OrdersTab> {
                                 const SizedBox(height: 4),
                                 Text('${order.createdAt.toLocal()}'.split('.').first, style: Theme.of(context).textTheme.bodyMedium),
                                 const SizedBox(height: 8),
-                                StatusBadge(status: order.status),
+                                Wrap(spacing: 6, runSpacing: 6, children: [
+                                  StatusBadge(status: order.status),
+                                  if (order.syncStatus == 'pending') const StatusBadge(status: 'pending', label: 'Đang đồng bộ'),
+                                  if (order.syncStatus == 'failed') const StatusBadge(status: 'cancelled', label: 'Đồng bộ lỗi'),
+                                ]),
                               ],
                             ),
                           ),
