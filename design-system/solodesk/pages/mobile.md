@@ -132,6 +132,41 @@ real regression in exactly the audience this redesign is for.
   quick action, matching `web-accounting`'s stock page data but without
   its editing affordances (this persona is the owner glancing at levels,
   not the accountant managing them).
+- Outbound queue ("Hàng đợi gửi đi"): a quick-action button on Home,
+  shown only once there's something in it (a pending/failed local
+  order) — lists every not-yet-synced order with its real attempt count
+  and, for a failed one, the real backend rejection reason plus a
+  "Đồng bộ ngay" retry action. See the offline-first section below for
+  the mechanism.
+
+### Offline-first order creation ("Bán khi mất mạng")
+
+The CEO mockup's own headline demo scenario — sell with no network, the
+sale stands, a visible queue drains once connectivity returns — ported
+as the mockup's own core property: **the local write IS the
+transaction; the network send is a visible, retryable side-channel**,
+never a precondition for "order placed" to succeed. `OrderCreateScreen`'s
+submit writes to a local SQLite table (`drift`) and returns instantly,
+regardless of connectivity; a snackbar says plainly which case just
+happened ("Đã tạo đơn hàng — đang đồng bộ" vs "Đã lưu — sẽ đồng bộ khi
+có mạng"). A persistent `OfflineBanner` sits above the bottom-nav tabs
+(real `connectivity_plus` detection, never a fake manual toggle) whenever
+the device is genuinely offline. Every order row (Orders tab, Home's
+recent-orders list, the Outbound Queue) carries a small sync-status
+badge — `StatusBadge` reused with an explicit Vietnamese label ("Đang
+đồng bộ" / "Đồng bộ lỗi") rather than its own auto-titled English
+default, the same "never show the user their own raw wire string" rule
+`present_step` forms already follow.
+
+**A hard scope boundary discovered mid-build, not assumed up front**:
+offline selling requires the product PICKER to work offline too, not
+just the write — `OrderCreateScreen`'s SKU list is a real-time read-through
+cache (`CachedSkus`), refreshed on every successful online fetch and
+served from cache on failure, specifically so the one screen this whole
+feature is about doesn't itself require a live connection to open.
+Stock levels and notifications remain online-only reads by deliberate
+choice (a real, narrower cut) — they degrade to "0"/"can't tell" rather
+than blocking the screen, never a silent crash.
 
 **Sales trend chart** — a real 7-day line chart (`fl_chart`), only
 rendered once ≥4 of those days have real revenue (`ui-ux-pro-max`'s own

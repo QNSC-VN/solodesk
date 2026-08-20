@@ -2175,9 +2175,9 @@ feature**: login (password only — Google Sign-In is a documented cut,
 same shape as the web apps' own not-yet-built items) → a real
 `mode: 'onboarding'` AI conversation for a first-run tenant → a 4-tab
 home shell (Trang chủ/Đơn hàng/Trợ lý AI/Thông báo) once onboarded.
-Explicitly NOT built: docs' PowerSync offline-first sync (real, separate
-infra — its own service, Postgres replica-identity setup, sync rules —
-a big lift with no proven need yet) and Vietnamese voice input (a UI slot
+Explicitly NOT built at this point: any offline support (added later,
+see "Offline-first order creation" below — a local SQLite outbox, not
+docs' PowerSync) and Vietnamese voice input (a UI slot
 is reserved in `ChatInput` for it, disabled, so adding it later doesn't
 need a layout rework). Orders/invoices/stock table parity with
 `web-accounting` is also NOT built — that's the accountant/staff
@@ -2433,3 +2433,100 @@ gateway/Langfuse, and PowerSync. One harmless piece of doc-debt found:
 `tenant.controller.ts`'s `TODO(Sprint 1+)` comment about `POST
 /v1/tenants` needing auth is stale now that real login exists — not a
 functional gap, just an outdated comment.
+
+## Offline-first order creation — the CEO mockup's own headline scenario
+
+The CEO's own product-vision mockup (`SOLOMATRIX-Mockup-v4`, a static
+HTML/JS simulation of the full intended product, mined for scope not
+implementation) leads with one demo scenario above all others: "Bán khi
+mất mạng" (sell while offline) — a sale is recorded and the invoice
+stands even with no network, and a visible outbound queue drains once
+connectivity returns. `apps/mobile` had zero offline support at this
+point (a real, then-current gap, not the "big lift with no proven need"
+PowerSync deferral above — this is the single narrower slice of it: one
+write, one client, no multi-device sync). User confirmed doing this
+first, ahead of any of the mockup's other ~29 missing/partial screens,
+using a local SQLite outbox (`drift`), not PowerSync — a single owner's
+own phone selling offline doesn't need PowerSync's multi-device
+conflict resolution, just a durable local write plus a retryable send.
+
+**Why zero backend-api changes were needed**: `POST /v1/orders` already
+requires a real `Idempotency-Key` header, and `withIdempotency`
+(`src/platform/idempotency.ts`) is purely key-based with no TTL on
+`platform.idempotency_keys` — a retry replayed days later behaves
+identically to one replayed a second later. The mobile client generates
+ONE stable client-side order id (`uuid`) once, reuses it as both the
+local row's primary key and the `Idempotency-Key` on every sync attempt
+— exactly-once delivery, confirmed for real via a direct Postgres query
+after a multi-attempt sync (`sales.orders` had exactly one row, not a
+duplicate, despite an earlier failed attempt and a later manual retry).
+
+**Architecture** (`apps/mobile/lib/local/`): one Drift table,
+`LocalOrders` — no generic multi-kind outbox, since order creation is
+the only offline-capable write in this cut (YAGNI; a second one earns a
+generic table later). `syncStatus` (`pending`/`synced`/`failed`)
+carried directly on the row. `OrdersService.createOrder()`
+(`services/orders_service.dart`) writes locally and returns instantly —
+the local write IS the transaction, matching the mockup's own
+mechanism (`sm-core.js`) exactly; `OrderSyncWorker.drainPending()`
+(`local/order_sync_worker.dart`) does the real POST in the background,
+classifying failures exactly like connector-hub's own
+`connector-http.ts`: network/timeout/429/5xx stay `pending` and retry
+at the next real trigger (app start, a real offline→online transition
+via `connectivity_plus`, or the Outbound Queue screen's manual "Đồng bộ
+ngay") — any other 4xx (a real 409 `INSUFFICIENT_STOCK`) is
+non-retryable, marks `failed`, and shows the real backend reason
+verbatim, parsed from the actual wire envelope
+(`{ error: { code, message, ... } }`, `GlobalExceptionFilter`'s real
+shape — not Nest's bare default). No separate backoff timer: retries
+are trigger-driven, the simpler and more battery-honest choice for one
+offline-capable write. `OutboundQueueScreen` doubles as the mockup's own
+named-missing "Hàng đợi gửi đi" screen, for free.
+
+**Two real, serious bugs found only by actually testing offline on the
+emulator, neither guessable from reading the code in isolation**:
+
+1. `SkusService.getSkus()` was a bare remote call with no local cache
+   and `OrderCreateScreen`'s `FutureBuilder` had no `hasError` branch —
+   offline, the create-order screen (the ONE screen this entire feature
+   is about) spun forever with no way to sell anything. Fixed with a
+   `CachedSkus` read-through table (`local_database.dart`) and a real
+   error state with a retry action.
+2. `SessionController._loadTenant()` treated ANY exception from
+   `getTenant()` — including a plain network failure — as a real
+   logout, so a cold app start with no network bounced straight to the
+   login screen: the mockup's own "sell while offline" scenario broken
+   at the very first screen. Fixed by caching the last-known `Tenant`
+   snapshot (`SecureSessionStore.cacheTenant`/`cachedTenant`) and only
+   treating `SessionExpiredException` (a real 401 + failed refresh) as
+   a genuine logout — any other failure falls back to the cached
+   tenant, never silently narrowing what a truly-never-loaded device
+   shows (that one case, with no cache at all, honestly has nothing to
+   fall back to).
+
+A third bug was a drift schema-migration miss (added `CachedSkus`
+without bumping `schemaVersion`/adding an `onUpgrade` step, so the
+already-installed on-device database never gained the new table) and a
+fourth was `HomeTab._load()` letting the online-only stock/notification
+reads throw uncaught, taking the whole Home tab down offline instead of
+degrading those two numbers to 0 as intended — both fixed.
+
+**Explicitly out of scope in this cut, stated not silently dropped**:
+offline applies to order creation only — stock/notification reads stay
+online-only (a real, documented cut, now correctly degrading instead of
+crashing); no generic outbox table; no conflict resolution beyond
+backend-api's existing idempotency + stock guard.
+
+Verified for real: `flutter analyze`/`flutter test` clean. Real manual
+smoke test on the same booted Android emulator, using genuine
+connectivity toggles (`svc wifi/data`, `airplane_mode_on`), not a fake
+in-app switch — cold app start fully offline (tenant name, cached
+orders, and the offline banner all render correctly); an order created
+while offline appears instantly with a "Pending" + "Đang đồng bộ" badge
+and in the Outbound Queue screen; reconnecting auto-drains it to
+`synced`; a second order created offline for more stock than actually
+remained (a real separate online sale consumed it in the meantime) came
+back `failed` with the real "Lot ... does not have 15 available."
+reason on reconnect — confirmed via a direct Postgres query
+(`sales.orders`, with `app.tenant_id` set for RLS) that the synced order
+landed exactly once.

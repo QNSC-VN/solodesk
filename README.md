@@ -176,7 +176,13 @@ GitHub repo, multiple independently-deployable services.
   not more bottom-nav tabs (stays at 4). No BFF needed here (no
   browser CORS/XSS surface for a native app) — calls backend-api/
   agent-orchestrator directly with a token in `flutter_secure_storage`.
-  PowerSync offline-first sync and Vietnamese voice input are real,
+  Order creation now works fully offline (a local `drift` SQLite outbox,
+  not PowerSync — see CLAUDE.md's "Offline-first order creation"): a
+  sale writes locally and returns instantly, syncs in the background on
+  reconnect via the SAME `Idempotency-Key` mechanism `POST /v1/orders`
+  already required, and a real backend rejection (e.g. out of stock)
+  surfaces its real reason instead of retrying forever. Docs' own
+  PowerSync (multi-device sync) and Vietnamese voice input remain real,
   documented cuts, not built yet. Reuses the SAME Agriculture/Farm Tech
   design tokens as the Next.js apps (`design-system/solodesk/pages/
   mobile.md`) — a `ui-ux-pro-max` run for this page suggested a generic
