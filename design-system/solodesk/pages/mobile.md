@@ -138,6 +138,22 @@ real regression in exactly the audience this redesign is for.
   and, for a failed one, the real backend rejection reason plus a
   "Đồng bộ ngay" retry action. See the offline-first section below for
   the mechanism.
+- Booking ("Đặt chỗ"): Home's quick-action row became THREE equal
+  `Expanded` buttons (Tạo đơn hàng / Đặt chỗ / Tồn kho, 12px gaps —
+  equal widths at every size, which is why a fixed Row beat a `Wrap`).
+  Booking is a PUSHED screen set like orders/stock, not a 5th tab.
+  Time entry is no keyboard fight: a date row + Vietnamese
+  `showDatePicker` (`flutter_localizations`, `locale: vi` — without it
+  the SDK's own calendar renders English), hour/minute dropdowns,
+  duration `ChoiceChip`s — one tap each, the same "buttons before
+  typing" rule as the Generative UI research. The create screen's
+  remaining-capacity hint ("Còn trống: n chỗ" / "Khung giờ đã đầy")
+  mirrors the backend's own overlap rule and is advisory only — the 409
+  stays the truth. Status pills reuse `StatusBadge` with Vietnamese
+  labels passed per call site (`Đã giữ chỗ`/`Đã xác nhận`/`Đã hủy`/
+  `Không đến`, plus an extra `Hết giữ` badge for an expired hold —
+  holds expire lazily server-side, so the badge is a display-time
+  computation, never a countdown timer).
 
 ### Offline-first order creation ("Bán khi mất mạng")
 

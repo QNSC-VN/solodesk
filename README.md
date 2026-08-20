@@ -181,7 +181,11 @@ GitHub repo, multiple independently-deployable services.
   sale writes locally and returns instantly, syncs in the background on
   reconnect via the SAME `Idempotency-Key` mechanism `POST /v1/orders`
   already required, and a real backend rejection (e.g. out of stock)
-  surfaces its real reason instead of retrying forever. Docs' own
+  surfaces its real reason instead of retrying forever. Booking got its
+  mobile UI last (`Đặt chỗ` quick action: list/create/detail + resource
+  add, against the already-complete `booking-resource` module — one new
+  backend list endpoint, `GET /v1/bookings`, so the list screen isn't
+  N+1 per-resource calls; see CLAUDE.md). Docs' own
   PowerSync (multi-device sync) and Vietnamese voice input remain real,
   documented cuts, not built yet. Reuses the SAME Agriculture/Farm Tech
   design tokens as the Next.js apps (`design-system/solodesk/pages/

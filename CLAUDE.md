@@ -2530,3 +2530,103 @@ back `failed` with the real "Lot ... does not have 15 available."
 reason on reconnect — confirmed via a direct Postgres query
 (`sales.orders`, with `app.tenant_id` set for RLS) that the synced order
 landed exactly once.
+
+## Booking UI on mobile — the backlog's cheapest real win, plus one honest verification story
+
+Picked as the next module (user's choice from the ranked backlog): the
+`booking-resource` module has been complete and e2e-tested since Sprint 1
+(resources, advisory-lock capacity holds, confirm/cancel/no-show), but
+`apps/mobile` had zero booking code. This feature is the owner's daily
+booking loop on mobile: Home's third quick action "Đặt chỗ" opens the
+bookings list; FAB creates a hold; detail screen confirms/cancels/marks
+no-show; a minimal Resources screen (list + add form) exists because a
+fresh tourism tenant has no resources and create-booking would be a dead
+end without one.
+
+**One real backend gap found and closed: no tenant-wide bookings list.**
+`GET /v1/bookings/by-resource/:resourceId` was the only list route — a
+list screen would have needed N+1 calls, the exact anti-pattern
+`GET /v1/lots/stock-summary` was added to avoid. New
+`GET /v1/bookings?resourceId=&from=&to=` (optional, ISO-validated,
+inclusive bounds on `startsAt`, `startsAt DESC`): `BookingListFilters`
+type, `IBookingRepository.listByTenant`, drizzle impl (`gte`/`lte`/`desc`,
+read-only so no advisory lock), `BookingService.listBookings`
+(`to < from` rejected; a given `resourceId` 404s via the same
+`getResource` guard `listByResource` uses), controller `@Get()` declared
+before `@Get(':id')` with the spread-optional pattern so `undefined`
+never becomes a string. First validated `@Query()` DTO in the codebase —
+the global `ValidationPipe({ whitelist, transform })` already handles it,
+zero bootstrap change. `test/booking-list.e2e-spec.ts` (service-level,
+same skeleton as `booking-lifecycle`): 7 cases — cross-resource list +
+ordering, resourceId filter, from/to window, tenant isolation, empty
+tenant `[]`, `to < from` rejected, unknown resourceId rejected. Backend
+e2e now 88/88; live curl against the dev server returns `[]`, 400 on a
+bad date, 404 on an unknown resource.
+
+**Mobile shape** (all copied conventions, nothing new): `models/booking.dart`
+(+ `isActiveHold`/`isExpiredHold` getters — the backend expires holds
+LAZILY, so "is this hold live" is a display-time computation; expired
+holds get an extra "Hết giữ" badge, and the "Giữ đến" line is static text
+refreshed by pull-to-refresh, never a countdown timer) and
+`models/resource.dart`; `services/bookings_service.dart` (pure
+`StockService` convention, online-only — offline-first stays
+orders-only); `services/api_error_message.dart` — `OrderSyncWorker`'s
+wire-envelope parsing extracted as `apiErrorMessage`/`apiErrorCode` so
+booking screens share it (the worker itself untouched this pass);
+`StatusBadge` gained color-map entries only (`held` → pending,
+`no_show` → error — `_labelFor` untouched, orders screens still use the
+English defaults; booking screens always pass a Vietnamese `label:` from
+`bookingStatusLabel`). Create screen's time entry is deliberately no
+keyboard fight: date row via a Vietnamese `showDatePicker`
+(`flutter_localizations`, SDK-only, `locale: Locale('vi')` — without it
+the SDK's own calendar renders English), hour/minute dropdowns, duration
+`ChoiceChip`s (30 phút/1/2/4 giờ/Cả ngày), and an advisory
+remaining-capacity hint that recomputes the backend's own overlap rule
+(`confirmed` or held-and-unexpired, strict half-open) client-side from
+`/bookings/by-resource` — the hint is memoized in state (a FutureBuilder
+handed a fresh future per build refires on every `setState`), and the
+backend 409 stays the truth. Timezone rule, stated once in the screen's
+doc comment: picked wall-clock time is built as `DateTime.utc(...)` so
+`toIso8601String()` emits `Z` — calling it on a local `DateTime` emits no
+offset and the backend would parse it in the server's tz; every display
+goes through `.toLocal()`.
+
+**Explicit cuts** (all need backend domains that don't exist): deposits
+(cọc), reschedule, calendar grid, combo/SKU linkage, channel field,
+seasonality chart, Booking.com webhook, CSV export, resource
+editing/deactivation, and the `'completed'` status (no backend
+transition exists; none added — YAGNI).
+
+**Verification — what's proven, and one environment lesson.** Backend:
+typecheck clean, e2e 88/88 (real Postgres), live curl for all three
+response shapes, and a curl-created resource visible immediately in the
+DB. Mobile: `flutter analyze` clean (one pre-existing info in
+`api_client.dart`), `flutter test` 4/4 including two new widget tests
+(BookingsScreen empty state with add-resource action; Sắp tới/Đã qua
+sections with Vietnamese status labels and the "Giữ đến" line, against
+a fake `BookingsService`). On a real emulator the full UI was exercised
+repeatedly — empty states, resource add, hold with live "Còn trống: n
+chỗ" hint, confirm (badge flip + action set change), no-show behind a
+confirm dialog, a real capacity overflow rejected with the mapped
+Vietnamese "Tài nguyên đã hết chỗ trong khung giờ này.", offline degrade
+to the retry EmptyState with recovery, and the fully-Vietnamese date
+picker. BUT the end-to-end app-write-to-DB attribution on the emulator
+could NOT be trusted this session: APKs were being externally redeployed
+to the shared emulator mid-test (the running app's APK directory changed
+to a path neither `adb install` produced — an Android Studio/parallel
+session deploying to the same emulator from the same working tree, which
+also retroactively explains "my screens rendering before I built them":
+their build is the same source). Rows created via the app were
+intermittently absent from the DB while curl-path writes to the same
+endpoint persisted; a loopback logging proxy proved the app does reach
+the host and that the keyboard's IME autocorrect can silently mangle
+typed input (`.dev` → `,dev`, `+` folding), another reason to prefer
+programmatic seeding in smoke tests. The honest claim: every layer is
+individually verified (backend e2e, widget tests, live API, UI behavior
+on-device); the single unverified link is one continuous app-tap-to-DB-
+row chain on a non-shared emulator. If this repo's emulator is ever
+dedicated to one session at a time, rerun the loop: login → add
+resource → hold → confirm → `select ... where tenant_id = <that tenant>`
+— five minutes, and the chain is closed. Also found and left alone:
+`pnpm lint` in backend-api references `eslint` which no package.json in
+the workspace declares — pre-existing, CI runs its own lint step.
