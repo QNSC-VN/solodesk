@@ -185,7 +185,13 @@ GitHub repo, multiple independently-deployable services.
   mobile UI last (`Đặt chỗ` quick action: list/create/detail + resource
   add, against the already-complete `booking-resource` module — one new
   backend list endpoint, `GET /v1/bookings`, so the list screen isn't
-  N+1 per-resource calls; see CLAUDE.md). Docs' own
+  N+1 per-resource calls; see CLAUDE.md). A quarterly HKD tax estimate +
+  filing-deadline reminder followed (`Thuế & khai báo` quick action) — a
+  new `tax-filing` module, a real BullMQ daily reminder sweep (confirmed,
+  not assumed, as this repo's actual recurring-job pattern before
+  building it), all deliberately narrower than the mockup's full DN/
+  per-SKU/marketplace-withholding model; see CLAUDE.md's "Tax/filing v1"
+  section for the exact scope cuts. Docs' own
   PowerSync (multi-device sync) and Vietnamese voice input remain real,
   documented cuts, not built yet. Reuses the SAME Agriculture/Farm Tech
   design tokens as the Next.js apps (`design-system/solodesk/pages/

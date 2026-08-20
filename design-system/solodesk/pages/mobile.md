@@ -253,6 +253,21 @@ TOKENS (`packages/ui-kit`) are shared.
   arrow — the Home tab's one repeating shape.
 - **`BottomNavShell`** — the 4-tab shell described above.
 
+### Tax & filing ("Thuế & khai báo")
+
+A pushed screen (`/home/tax`), reached from a Home quick action — not a
+5th bottom-nav tab (stays at 4). Two real states, not one shape: a
+first-run rate-group picker (`ChoiceButtons`, the SAME closed-catalog
+widget onboarding's Generative UI already established — never free text
+for a fixed 4-option set), and, once set, the real quarterly estimate.
+The draft-rate disclaimer banner is gated on the real `isDraft` flag from
+the API response, never a hardcoded string — the one place on this
+screen where the number itself could be wrong, so the warning has to be
+data-driven too, matching the mockup's own `canDoiChieu` mechanism. The
+receipt-code "đóng sổ kỳ" action reuses `showDialog`/`AlertDialog` (the
+same modal primitive booking's cancel/no-show confirmations already
+use) rather than introducing a bottom-sheet pattern for one screen.
+
 ---
 
 ## Motion

@@ -2712,3 +2712,140 @@ the backlog audit). Mechanics shipped:
   emulator to verify flutter_secure_storage/drift keep working is risk
   for no meaningful gain (YAGNI). `flutter analyze` clean, tests 4/4
   after the changes.
+
+## Tax/filing v1 — quarterly HKD estimate + filing-deadline reminder
+
+Backlog item #1 (ranked highest of the 7 backend gaps from the mockup
+audit) — the CEO mockup's own tax/filing model is rich (a household/
+enterprise regime toggle, 4 statutory rate-groups each with a GTGT+TNCN
+rate, a 200M-VND exemption, a quarterly filing-deadline rule, a
+receipt-code "close the quarter" action, marketplace-withholding
+reconciliation, S1a/S2a books, a b2g 30-day clock). Real backend had
+almost none of it: `Tenant` had zero tax fields, `tax.tax_rules` only
+carried one flat rate + the 1B e-invoice threshold per `TenantIndustry`
+(a business-sector axis — food_beverage/tourism/agriculture — NOT the
+same axis as the mockup's 4 statutory rate-groups), no filing/deadline
+concept existed at all.
+
+**v1 ships the smallest real, honestly-scoped slice**: HKD-only quarterly
+estimate (revenue-based, one rate-group per tenant, no per-SKU
+granularity), a real filing-deadline reminder, and a real "mark this
+quarter filed" record — cutting DN/enterprise regime (needs the Expense
+domain, backlog gap #3, to compute profit-based TNDN — no tenant needs it
+yet), per-SKU tax-group attribution (a fast-follow once there's a mobile
+SKU editor), marketplace-withholding reconciliation (connector-hub
+doesn't populate a per-order withheld amount yet), S1a/S2a books (the
+estimate screen's own breakdown covers the same info for v1), the b2g
+30-day clock (that's the not-yet-built web-b2g-dashboard's feature), and
+receipt-code format validation (the mockup itself accepts any non-empty
+string — no real eTax API exists to validate against).
+
+**Why zero backend-api schema surprises were needed for the exemption
+threshold**: `tax.tax_rules` already carried the 1B e-invoice threshold
+(`annualRevenueThreshold`) — the mockup's 200M exemption
+(`TAX.nguong.mienThue.value`) is just a second column on the SAME
+reference row (`exemptionAnnualRevenueThreshold`, migration `0015`),
+reusing `TaxCalculationService`'s existing versioned per-industry lookup
+rather than a second lookup mechanism.
+
+**New reference table `tax.rate_groups`** (no `tenant_id`, no RLS, same
+shape as `tax.tax_rules`): the 4 statutory groups
+(`phanPhoi`/`sanXuat`/`dichVu`/`khac`), rates stored as fractions (matching
+`tax_rules.rate`'s own convention, NOT the mockup source's own
+percent-point numbers), seeded directly from the mockup's `TAX.nhom`
+constant with the same "NOT verified statutory" disclaimer `tax_rules`'
+own seed comment already carries. No effective-dating (unlike
+`tax_rules`) — new data with no history to version yet, added later if a
+real rate change ever needs it (YAGNI). `identity.tenants` gains
+`tax_group_default` (nullable FK into `rate_groups` — unset is a real,
+honest "household hasn't configured this yet" state, never a guessed
+default) and a genuinely new self-service route,
+`PATCH /v1/tenants/tax-profile` (no authenticated tenant-mutation route
+existed at all before this — confirmed by reading the file, not assumed
+— `TenantController` previously had only the public onboarding POST, a
+GET, and GET members). New tenant-scoped `tax.filings` table, `UNIQUE
+(tenant_id, quarter, year)` — filing the same quarter twice is a DB-level
+rejection, not an app-level check, confirmed via a real 409
+(`QUARTER_ALREADY_FILED`) during manual testing.
+
+**New `tax-filing` module** (`services/backend-api/src/modules/tax-filing/`),
+layered exactly like `invoicing-tax`: `TaxEstimateService.estimateQuarter`
+sums real `sales.orders.total_amount` (status `confirmed` only — a
+`returned` order never became real revenue, a nuance the initial plan
+missed and a review of the real `OrderStatus` union caught before writing
+any code) for the VN calendar quarter (Asia/Ho_Chi_Minh is a fixed UTC+7
+offset, no DST, no timezone library needed — a small `filing-period.ts`
+holds the shared quarter-window/deadline math), checks a SEPARATE
+year-to-date cumulative sum against the exemption threshold (the mockup's
+own `mienThue` gate is year-cumulative, not per-quarter — a second real
+correction made before implementing, not after), and reuses
+`platform/money`'s exact-decimal helpers `TaxCalculationService` already
+uses rather than reimplementing rate math. `FilingService.recordFiling`
+is `withIdempotency` + `withTenantTransaction`, same shape as
+`InvoiceService.issueInvoice`.
+
+**Filing-deadline reminder — BullMQ, confirmed as this repo's real
+recurring-job pattern before assuming it** (a fresh Explore pass found
+`bullmq` is genuinely used, but only the raw package + `Worker`/
+`Queue.upsertJobScheduler` in `worker-notifications.ts` — no
+`@nestjs/bullmq`, no Temporal cron, no `node-cron` anywhere in the repo).
+`FilingDeadlineSweepService.sweep()` iterates every active tenant with a
+`taxGroupDefault` set (`identity.tenants` has no RLS of its own — same
+real trade-off `EmailOutboxRelayService`'s own sweep already documents),
+skips ones already filed the current quarter, and for ones within 14 days
+of the deadline (the mockup's own `warn` threshold) calls the existing
+`NotificationService.notify` with a deterministic
+`sourceEventId: filing-deadline-${tenantId}-Q${quarter}-${year}` — the
+same dedup guarantee `issueInvoice`'s threshold-crossing notification
+already relies on, so a daily sweep re-firing for two weeks straight
+sends exactly ONE real notification per tenant per quarter. Runs as a
+SECOND lightweight `Worker`/scheduler inside the SAME already-running
+`worker-notifications.ts` process, not a new deployable worker — one
+small daily job doesn't earn its own process. `NotificationType` gained
+a 4th value, `FILING_DEADLINE_APPROACHING` (in-app only in this cut — no
+email sent, though `EmailTemplateVars`/`EMAIL_TEMPLATES` still gained a
+real entry so the exhaustive-mapped-type registry stays exhaustive and a
+real email channel can be added later without a template/vars gap).
+
+**Mobile** (`apps/mobile/`): one new pushed screen, `TaxScreen`
+(`/home/tax`, reached from a new Home quick action) — a first-run rate-
+group picker (reusing `ChoiceButtons`, the exact Generative-UI widget
+already built for a closed small option set) when unset, otherwise the
+real quarterly estimate, an exemption banner, a deadline countdown with
+urgency styling, a permanent draft-rate disclaimer gated on the real
+`isDraft` flag (never hardcoded), and a receipt-code dialog (reusing the
+existing `showDialog`/`AlertDialog` convention from booking's own
+cancel/no-show flows — no new modal pattern introduced) that maps a real
+409 to the specific Vietnamese message. `ApiClient` gained a genuinely
+missing `patch<T>` method (only `get`/`post` existed before this).
+
+**Two real defects found only by testing on the actual emulator, neither
+guessable from reading the code in isolation**:
+1. A stale `_error` string lingered on `TaxScreen` after a successful
+   pull-to-refresh — `_refresh()` never cleared it, only the two action
+   handlers did. Fixed by clearing `_error` inside `_refresh()` itself.
+2. A one-off client-side blip during manual filing-dialog testing showed
+   the generic "check your connection" fallback instead of the specific
+   `QUARTER_ALREADY_FILED` message a genuine duplicate attempt would
+   produce — investigated via the real backend-api log (no server-side
+   warning/error at all around that request) and a direct `psql`/`curl`
+   check (the filing landed in `tax.filings` exactly once, no duplicate,
+   and a real second POST attempt correctly reproduced the specific
+   mapped message) — confirmed as a one-time transient client/emulator
+   network hiccup, not a data-integrity or logic defect; recorded here
+   rather than silently ignored, same discipline as the mobile app's
+   "observed anomaly" note above.
+
+Verified for real: backend-api typecheck clean; the full e2e suite
+(97/97, including the 9 new `tax-filing.e2e-spec.ts` cases — rate-group
+math, the exemption boundary, the "not configured" honest state, the
+real 409 on a duplicate filing, an idempotent-retry replay, and all 4
+`filingDeadline()` quarters including the Q4→next-year-January wrap) —
+passes; migration `0015` applied against the real dev Postgres and its
+values spot-checked directly via `psql`. `flutter analyze`/`flutter test`
+clean. Real manual smoke test on the same booted Android emulator: set a
+rate group via the app and confirmed via `curl` it matched; the estimate
+correctly showed the exemption banner and zeroed GTGT/TNCN for real
+under-200M revenue; recorded a real filing, confirmed via direct
+Postgres/API query it landed exactly once; reproduced the duplicate-
+filing 409 directly.
