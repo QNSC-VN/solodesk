@@ -2059,3 +2059,70 @@ method pill, "Completed" status, success banner) and the now-`returned`
 order's action link disappears; re-visiting `/returns/new` for that same
 order correctly shows "already returned, cannot return" instead of the
 form.
+
+## Forgot/reset-password — a real cross-service env-var bug, found and fixed
+
+Picked as the next module. Closes docs Section 11's "real login/session-
+recovery" gap the rest of the way — backend-api's `POST /v1/auth/forgot-
+password`/`POST /v1/auth/reset-password` were built with real login but
+had no frontend anywhere; `LoginForm.tsx` had an explicit code comment
+calling this out as a documented, deliberate cut.
+
+**A real bug found by reading `signup.service.ts`, not assumed**: both
+`verifyEmailUrl()` and `resetPasswordUrl()` read the SAME undeclared
+`process.env.APP_PUBLIC_URL` (missing from `env.schema.ts`, `.env.example`,
+and CI — violating this repo's own "every new env var goes in all three
+places" rule), defaulting to `http://localhost:3000` — backend-api's OWN
+port. That's correct for `verifyEmailUrl` (`/v1/auth/verify-email` really
+is a backend-api route, clicked directly with no frontend page ever
+rendering it), but wrong for `resetPasswordUrl`: `/reset-password` was
+always meant to be a `web-accounting` frontend page, a different
+deployable on a different port (:3010) entirely. Before this fix, a real
+emailed password-reset link — in ANY environment, not just local dev —
+pointed at a URL with no such route. Fixed by splitting into two env
+vars: `APP_PUBLIC_URL` (kept, now properly declared, backend-api's own
+public URL) and a new `WEB_ACCOUNTING_PUBLIC_URL` (defaults to
+`http://localhost:3010` locally) — `resetPasswordUrl` switched to the
+latter. Both added to `env.schema.ts` (with defaults, so this doesn't
+become a newly-required var breaking existing deploys), `.env.example`,
+and `backend-api-ci.yml`.
+
+**The frontend pages themselves are a small, real addition** to
+`web-accounting`, no new design-system query needed (same centered-card
+shape as `/login`, `ui-ux-pro-max`'s buyer-portal/`web-accounting` MASTER
+already covers this pattern): `/forgot-password` (email in, always the
+same generic "if this email exists…" response out — no enumeration leak,
+matching backend-api's own design) and `/reset-password?token=...` (new
+password + confirm, submits to the real `POST /v1/auth/reset-password`,
+redirects to `/login?reset=1` on success). `proxy.ts` gained both paths
+as unauthenticated-allowed, alongside `/login`. `LoginForm.tsx`'s
+"documented scope cut, no dead link here" comment is now simply a real
+"Quên mật khẩu?" link — the cut is closed, not just narrated.
+
+**A real rate-limit interaction worth naming**: `POST /v1/auth/forgot-
+password` has its OWN limit (3/hour PER EMAIL, separate from login's
+5/15min and signup's 10/hour/IP) — `lib/auth.ts`'s `forgotPassword()`
+surfaces a real `429` as a distinguishable `rateLimited` boolean rather
+than silently swallowing it into the same generic "check your email"
+message every other outcome gets; a rate-limit response doesn't leak
+whether the email exists, so distinguishing it is safe. The new
+`test/forgot-reset-password.spec.ts` gives each `it()` its own fresh
+email specifically to avoid tripping this real limit across the suite,
+same discipline `auth.spec.ts`'s own header comment already documents for
+signup's limit.
+
+Verified: `next build` clean, ESLint clean, `pnpm test` 13/13 (9
+pre-existing + 4 new — a real forgot-password → real token read from
+`email_outbox` → real reset → old password now rejected, new password
+works; an unknown email resolves identically, no leak; reusing an
+already-used token is rejected; a garbage token is rejected), backend-api
+typecheck clean and e2e 80/80 unaffected by the `env.schema.ts`/
+`signup.service.ts` changes. Real manual end-to-end smoke test across
+both live dev servers: real signup → verify → real `POST /forgot-
+password` → confirmed the real `email_outbox` row's `resetUrl` now
+correctly points at `localhost:3010` (not `:3000`, the bug just fixed) →
+the real `/reset-password?token=...` page renders with the token embedded
+→ submitted the real reset → old password correctly rejected (401),
+new password correctly logs in (real session) → confirmed the reused
+token correctly gets `401 INVALID_TOKEN` on a second attempt → confirmed
+`/login?reset=1` renders the real success banner.

@@ -153,9 +153,12 @@ GitHub repo, multiple independently-deployable services.
   interactive, mutating page in this app, not just another read-only
   list. See CLAUDE.md's "web-accounting" sections for the full design
   (including the page-level design-system override at
-  `design-system/solodesk/pages/web-accounting.md`). Table sorting, a
-  tenant switcher, and a forgot-password page are still real, deliberate
-  cuts — not built yet.
+  `design-system/solodesk/pages/web-accounting.md`). `/forgot-password`
+  and `/reset-password` are real too now — building them surfaced a real
+  cross-service bug (backend-api's emailed reset link pointed at its own
+  port instead of web-accounting's, from an undeclared, shared env var —
+  see CLAUDE.md). Table sorting and a tenant switcher are still real,
+  deliberate cuts — not built yet.
 
 Not yet built: `apps/mobile`, `apps/web-b2g-dashboard`.
 
