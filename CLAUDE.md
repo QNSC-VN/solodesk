@@ -2962,3 +2962,67 @@ emulator pass creating a second expense through the actual form and
 confirming — on a cold app restart, the definitive check — both
 expenses, the correct category breakdown, and the correct total all
 render exactly right.
+
+## Connector status v1 — backlog gap #4
+
+The mockup's connector story is a full lifecycle machine — a 7-state
+per-connector onboarding flow (`chua_hoi → chua_co_tk → dang_dang_ky →
+cho_duyet → da_ket_noi / loi / bo_quan`, plus `hoan` deferrals with
+staff assignment), freshness/mechanism metadata ("when did this channel
+last actually pull"), dead-connector recovery UX feeding the staff
+console's overdue-task board, an audit journal, and an
+"already-have-it vs register-in-app" 3-branch onboarding flow. None of
+that is v1. What IS v1: the honest status page. A household opening
+"Kết nối" sees all 13 catalog providers, each with a Vietnamese status
+chip, and can run a real verification against the ones that actually
+have adapters.
+
+Backend (`services/connector-hub`): migration `0005` adds
+`last_verified_at`/`last_verification_ok` to `vault.credentials` —
+before this, `ConnectorVerificationService.verify()` THREW AWAY its own
+result: a real success or a real failure was returned to the caller and
+then discarded, so nothing in the system remembered whether a
+credential had ever been checked. `verify()` now persists the outcome
+via `CredentialRepository.recordVerification`, both fields surface
+through `GET /v1/vault/:provider/credentials` and the
+internal-onboarding route, and a new `GET /v1/connectors/status`
+meres the full 13-provider catalog with real vault state plus an
+`isImplemented` flag (`IMPLEMENTED_CONNECTOR_PROVIDERS` — the 6
+real-adapter providers vs the 7 stubs, so the UI can say "Chưa hỗ
+trợ" instead of pretending a stub is configurable). The key
+correctness proof, curl-verified end to end: fake GHN credentials +
+`POST /v1/connectors/ghn/verify` → a REAL failure against GHN's real
+sandbox → `lastVerificationOk: false` PERSISTED and honestly reported
+by the status endpoint.
+
+Mobile: read-only v1 — no credential-entry form, deliberately:
+credentials are still entered via agent-orchestrator's conversational
+`connect_sepay`-style onboarding tools, which is how the real system
+does it today; a mobile form would be a second entry path for secrets
+before the first one has even one pilot user. `ConnectorsScreen`
+(`/home/connectors, from Home's "Kết nối" quick action) lists all 13
+providers with status chips (Chưa hỗ trợ / Chưa cấu hình / Chưa kiểm
+tra / Hoạt động / Lỗi / Đã tắt) and shows a "Kiểm tra kết nối" button
+on configured+implemented providers that calls `verify()` and
+refreshes. `ApiClient` gained a third `ApiTarget.connectorHub` (its
+JWTs are the same identity provider, per the local-dev setup).
+
+Explicit cuts versus the mockup (all named, none silent): no 7-state
+onboarding machine, no freshness/mechanism metadata, no
+dead-connector recovery UX, no staff-console/overdue-task integration,
+no audit journal, no "already-have-it vs register" 3-branch flow, no
+mobile credential entry. Each is real future work the mockup sketches,
+not an oversight.
+
+Verified for real: connector-hub `tsc --noEmit` clean, full e2e 18/18
+(6 new `connector-status.e2e-spec.ts` cases), migration `0005` applied
+against the real dev Postgres, `flutter analyze` clean. Real emulator
+pass: logged in with a real verified account, all 13 providers rendered
+with correct Vietnamese labels and "Chưa cấu hình"/"Chưa hỗ trợ"
+chips; set a fake SePay credential via curl → pull-to-refresh flipped
+SePay to "Chưa kiểm tra"; tapped "Kiểm tra kết nối" → a real
+verification failure against SePay's real API flipped the chip to
+"Lỗi" with an honest snackbar; after deleting the test credential and
+a cold app restart, the screen returned to "Chưa cấu hình" exactly as
+the (now absent) vault state says. Throwaway smoke accounts left in
+the local dev DB (harmless); the test credential row was deleted.
