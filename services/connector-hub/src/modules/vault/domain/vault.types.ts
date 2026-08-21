@@ -38,8 +38,13 @@ export interface StoredCredential {
   tenantId: string;
   provider: ConnectorProvider;
   isActive: boolean;
+  lastVerifiedAt: Date | null;
+  lastVerificationOk: boolean | null;
   updatedAt: Date;
 }
+
+/** The 6 providers with a real adapter (`ConnectorVerificationService`'s own constructor list) — every other catalog entry is an honest `stub-connectors.ts` "not implemented" throw. Single source of truth so `GET /v1/connectors/status` and the verification service can never silently drift apart. */
+export const IMPLEMENTED_CONNECTOR_PROVIDERS: readonly ConnectorProvider[] = ['sepay', 'ghn', 'ghtk', 'shopee', 'tiktok_shop', 'lazada'];
 
 export interface SetCredentialsInput {
   provider: ConnectorProvider;

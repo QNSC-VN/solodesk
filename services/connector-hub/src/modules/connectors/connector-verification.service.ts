@@ -70,6 +70,13 @@ export class ConnectorVerificationService {
       throw new NotFoundException('CREDENTIAL_NOT_FOUND', `No credentials configured for provider "${provider}" — set them via POST /v1/vault/${provider}/credentials first.`);
     }
     const adapter = this.adapters.get(provider)!;
-    return adapter.verifyCredentials(payload);
+    try {
+      const ok = await adapter.verifyCredentials(payload);
+      await this.vaultService.recordVerificationResult(tenantId, provider, ok);
+      return ok;
+    } catch (err) {
+      await this.vaultService.recordVerificationResult(tenantId, provider, false);
+      throw err;
+    }
   }
 }

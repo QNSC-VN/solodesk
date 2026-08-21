@@ -34,6 +34,12 @@ export const credentials = vaultSchema.table(
     iv: bytea('iv').notNull(),
     authTag: bytea('auth_tag').notNull(),
     isActive: boolean('is_active').notNull().default(true),
+    // Set by ConnectorVerificationService.verify() — the real result of
+    // the last POST /v1/connectors/:provider/verify call, persisted
+    // instead of thrown away. Both null = never verified yet, a real,
+    // honest state distinct from a failed verification.
+    lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+    lastVerificationOk: boolean('last_verification_ok'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

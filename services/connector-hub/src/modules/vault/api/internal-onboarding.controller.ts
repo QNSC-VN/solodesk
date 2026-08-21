@@ -9,7 +9,13 @@ import { SetCredentialsDto, StoredCredentialResponseDto } from './vault.dto';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, type StoredCredential } from '../domain/vault.types';
 
 function toDto(c: StoredCredential): StoredCredentialResponseDto {
-  return { provider: c.provider, isActive: c.isActive, updatedAt: c.updatedAt };
+  return {
+    provider: c.provider,
+    isActive: c.isActive,
+    lastVerifiedAt: c.lastVerifiedAt,
+    lastVerificationOk: c.lastVerificationOk,
+    updatedAt: c.updatedAt,
+  };
 }
 
 /**

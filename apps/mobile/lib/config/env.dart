@@ -15,9 +15,14 @@ class Env {
 
   static String get _agentOverride => const String.fromEnvironment('AGENT_ORCHESTRATOR_BASE_URL');
 
+  static String get _connectorHubOverride => const String.fromEnvironment('CONNECTOR_HUB_BASE_URL');
+
   static String get backendApiBaseUrl =>
       _backendOverride.isNotEmpty ? _backendOverride : dotenv.env['BACKEND_API_BASE_URL'] ?? 'http://localhost:3000/v1';
 
   static String get agentOrchestratorBaseUrl =>
       _agentOverride.isNotEmpty ? _agentOverride : dotenv.env['AGENT_ORCHESTRATOR_BASE_URL'] ?? 'http://localhost:3002/v1';
+
+  static String get connectorHubBaseUrl =>
+      _connectorHubOverride.isNotEmpty ? _connectorHubOverride : dotenv.env['CONNECTOR_HUB_BASE_URL'] ?? 'http://localhost:3001/v1';
 }

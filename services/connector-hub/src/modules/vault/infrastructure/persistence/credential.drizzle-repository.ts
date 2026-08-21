@@ -13,6 +13,8 @@ function toMetadata(row: typeof credentials.$inferSelect): StoredCredential {
     tenantId: row.tenantId,
     provider: row.provider,
     isActive: row.isActive,
+    lastVerifiedAt: row.lastVerifiedAt,
+    lastVerificationOk: row.lastVerificationOk,
     updatedAt: row.updatedAt,
   };
 }
@@ -69,6 +71,17 @@ export class CredentialDrizzleRepository implements ICredentialRepository {
       const rows = await tx
         .update(credentials)
         .set({ isActive: false, updatedAt: new Date() })
+        .where(and(eq(credentials.tenantId, tenantId), eq(credentials.provider, provider), eq(credentials.isActive, true)))
+        .returning();
+      return rows[0] ? toMetadata(rows[0]) : null;
+    });
+  }
+
+  async recordVerification(tenantId: string, provider: ConnectorProvider, ok: boolean): Promise<StoredCredential | null> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .update(credentials)
+        .set({ lastVerifiedAt: new Date(), lastVerificationOk: ok, updatedAt: new Date() })
         .where(and(eq(credentials.tenantId, tenantId), eq(credentials.provider, provider), eq(credentials.isActive, true)))
         .returning();
       return rows[0] ? toMetadata(rows[0]) : null;

@@ -52,6 +52,12 @@ export class VaultService {
     return result;
   }
 
+  /** Called by `ConnectorVerificationService.verify()` right after a real verify call — persists the outcome instead of it being thrown away over HTTP. Null if the tenant has no active credential row for the provider (shouldn't happen — `verify()` already requires one to run the check at all). */
+  async recordVerificationResult(tenantId: string, provider: ConnectorProvider, ok: boolean): Promise<StoredCredential | null> {
+    assertTenantMatchesSession(tenantId);
+    return this.credentialRepository.recordVerification(tenantId, provider, ok);
+  }
+
   /** The URL segment a tenant configures in a provider's dashboard as their webhook endpoint (e.g. `POST /v1/webhooks/sepay/:token`). Idempotent — always returns the same token for a given tenant+provider. */
   async getOrCreateWebhookToken(tenantId: string, provider: ConnectorProvider): Promise<string> {
     assertTenantMatchesSession(tenantId);

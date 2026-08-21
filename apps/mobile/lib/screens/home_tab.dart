@@ -172,14 +172,28 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                 ],
               ),
               const SizedBox(height: AppMetrics.touchSpacing),
-              AppButton(
-                label: 'Khoản chi',
-                variant: AppButtonVariant.secondary,
-                onPressed: () async {
-                  await context.push('/home/expenses');
-                  if (!mounted) return;
-                  _refresh();
-                },
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      label: 'Khoản chi',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: () async {
+                        await context.push('/home/expenses');
+                        if (!mounted) return;
+                        _refresh();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: AppMetrics.touchSpacing),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Kết nối',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: () => context.push('/home/connectors'),
+                    ),
+                  ),
+                ],
               ),
               if (summary.pendingSyncCount > 0) ...[
                 const SizedBox(height: AppMetrics.touchSpacing),

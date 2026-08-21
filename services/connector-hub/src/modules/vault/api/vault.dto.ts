@@ -29,5 +29,7 @@ export class SetCredentialsDto {
 export class StoredCredentialResponseDto {
   @ApiProperty({ enum: CONNECTOR_PROVIDERS }) provider!: string;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty({ nullable: true, type: Date }) lastVerifiedAt!: Date | null;
+  @ApiProperty({ nullable: true, type: Boolean }) lastVerificationOk!: boolean | null;
   @ApiProperty() updatedAt!: Date;
 }

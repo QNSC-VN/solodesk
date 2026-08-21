@@ -13,7 +13,13 @@ function parseProvider(value: string): ConnectorProvider {
 }
 
 function toDto(c: StoredCredential): StoredCredentialResponseDto {
-  return { provider: c.provider, isActive: c.isActive, updatedAt: c.updatedAt };
+  return {
+    provider: c.provider,
+    isActive: c.isActive,
+    lastVerifiedAt: c.lastVerifiedAt,
+    lastVerificationOk: c.lastVerificationOk,
+    updatedAt: c.updatedAt,
+  };
 }
 
 @ApiTags('vault')

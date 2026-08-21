@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../config/env.dart';
 import 'secure_session_store.dart';
 
-enum ApiTarget { backendApi, agentOrchestrator }
+enum ApiTarget { backendApi, agentOrchestrator, connectorHub }
 
 /// Thrown when a request 401s AND the subsequent real refresh attempt also
 /// fails (refresh token itself expired/revoked — e.g. logout-all elsewhere)
@@ -51,6 +51,7 @@ class ApiClient {
   String _baseUrl(ApiTarget target) => switch (target) {
         ApiTarget.backendApi => Env.backendApiBaseUrl,
         ApiTarget.agentOrchestrator => Env.agentOrchestratorBaseUrl,
+        ApiTarget.connectorHub => Env.connectorHubBaseUrl,
       };
 
   Future<T> get<T>(ApiTarget target, String path, T Function(dynamic) parse) => _send(target, 'GET', path, null, parse);
