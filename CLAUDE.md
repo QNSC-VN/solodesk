@@ -3266,3 +3266,62 @@ mechanical) but four real defects in the details, all fixed:
 4. **Disposed-controller writes** — STT partial/final callbacks now
    `mounted`-guard their TextEditingController writes (navigate away
    mid-dictation no longer writes to a dead field).
+
+## Repo-wide clean-code audit round — batch A + top of batch B
+
+Three parallel read-only audits (backend-api, the other three services,
+mobile) produced ~50 ranked findings; the user chose "critical bugs +
+highest-value consolidation". Four commits: backend-api, the other
+services, mobile, and this note. The two findings NOT acted on, so they
+stay on the record: the notifications module has no repository port
+(its service queries drizzle directly — real layering gap, but a
+mechanical port+repo extraction is churn without a second consumer);
+and the 8 unexercised adapter methods in connector-hub are the
+documented connector-epic deliverable, kept (with the audit's
+rot-risk note) rather than deleted against that scope decision.
+
+**Batch A (correctness), all fixed and tested:** the returns
+duplicate-race (above — the only finding that moved money);
+connector-hub's zalo verify() 500 (now ADAPTER_NOT_IMPLEMENTED);
+SePay's missing-id/missing-date webhook guards (an id-less payload
+previously deduped forever on the literal string "undefined");
+compliance's fabricated incompleteCount: 0 on single-doc responses;
+the split brain between UTC and VN-local year boundaries for the same
+"cumulative revenue this year" concept (invoicing-tax vs tax-filing —
+now one platform yearWindowUtc); agent-orchestrator's embedText
+retried permanent Voyage 4xx (now nonRetryable, same rule as the
+Anthropic fix); the workflow update handler persisting history AFTER
+the Activity resolved (interleaved sends could checkpoint swapped
+turn pairs — user message now appended before); ml-analytics'
+compare_digest on str (non-ASCII token = TypeError 500, now bytes →
+clean 403) and UTC date.today() window edge (now VN-local).
+
+**Batch B (consolidation), the ones shipped:** `platform/vn-time.ts`
+in backend-api — one home for UTC+7 math (quarter/year/month windows,
+daysUntil) replacing three private copies with divergent rounding;
+listOwners on the member port (3 hand-rolled filters); COUNT queries
+for badge endpoints (were materializing every row); messaging's
+duplicated toDto + a DTO declared inside a controller + a validated-
+then-dropped senderId field; one getQueue factory for four queue
+singleton files; idempotency-key position unified (tenantId, key,
+input); customers' float-money sort. connector-hub: the DTO layer's
+private 13-provider copy (already drifted, missing zalo — the exact
+failure mode the source-of-truth comment warns about) now imports the
+domain list; parseProvider/toCredentialMetadataDto domain helpers
+replace triplicated validation + duplicated mappers; two dead exports
+deleted. agent-orchestrator: `platform/internal-service.ts` — one
+internalServiceFetch (guard/headers/4xx≠429 nonRetryable) replacing
+five hand-rolled copies, with DEFAULT_TARGET_URLS as the single
+source the env schema also references; ConversationMessage defined
+once. Mobile: `utils/format.dart` (8× formatVnd + 9× date formatters
+gone, one of which mis-rendered the tax deadline), StatusBadge.variant
+(five screens stop funnelling fake order statuses through the color
+table), connectors_screen stops leaking raw ApiException JSON to the
+user, OrderSyncWorker reuses apiErrorMessage, stock/notifications gain
+error-with-retry (were infinite spinners), four detail screens gain
+retry, lowStockThreshold lives once, compliance edit is router-routed.
+
+Suites after the round: backend-api 118/118 (new concurrent-return
+race test), connector-hub 21/21, agent-orchestrator 37/37,
+ml-analytics 14/14, mobile analyze clean + 4/4 + device spot-checks
+(grouped currency, local dates, variant badges, routed edit).
