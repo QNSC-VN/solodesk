@@ -3109,3 +3109,75 @@ several other tenants' test messages — RLS isolation visible on-device.
 (The emulator's system clock drifted +14h mid-session — display
 timestamps in the screenshots are skewed by that; `.toLocal()` logic is
 correct and the stored UTC instants are exact.)
+
+## Compliance-document expiry tracking — backlog gap #6 (final gap)
+
+Real research first corrected the audit itself: the mockup has NO
+"gating org-buyer sales" — that backlog line doesn't match the mockup's
+code. What the mockup actually has: a per-tenant `compliance[]` array
+(free-text doc type — no enum, the real set varies by industry; number;
+issue/expiry dates; mandatory flag; purpose note), a derived status
+(con-han / thieu / thieu-1), a 90-day warn threshold with 30-day
+escalation, a "N mục chưa đủ" count, and the mandatory+present docs
+shown on the BUYER-facing public traceability page. No renewal flow, no
+issuing-authority field, no hard sales/invoice block, no b2g board.
+
+What v1 built (backend-api `compliance` module, migration `0018`): one
+RLS table `compliance.documents`. `docType` free text (mockup-faithful);
+`documentNumber` NULL = known-required-but-missing (the mockup's
+'thieu' rows — this is what keeps "N mục chưa đủ" honest without a
+stored status); `issuedOn`/`expiresOn` nullable dates; `isMandatory`;
+`notes`. Status (`missing`/`expired`/`expiring`≤90d/`valid`) is DERIVED
+at read time in the domain (`deriveStatus`/`daysUntil`/`countIncomplete`
+— one source shared by service, controller, and sweep), never stored —
+the same "no status column that can drift from the truth" call as
+payment-reconcile's `isFullyPaid`. API: `GET/POST` (Idempotency-Key
+required, expenses pattern)/`PATCH`/`DELETE /v1/compliance/documents`.
+Renewal is deliberately JUST editing `expiresOn` — the mockup has no
+renewal flow either.
+
+The reminder half: `DocExpirySweepService` — a line-for-line structural
+copy of `FilingDeadlineSweepService` (iterate active tenants —
+`identity.tenants` has no RLS, the trade-off both prior sweeps already
+document; derive per-doc status; notify owners). Notification fires at
+≤30 days (the mockup's own escalation point — 90 stays visual-only) or
+once already expired, with deterministic `sourceEventId`
+`doc-expiry-${docId}-${expiresOn}` = exactly ONE notification per
+document per expiry date; renewing under a new date naturally arms the
+next one. `NotificationType` gained `DOC_EXPIRY_APPROACHING` (union +
+email-template map entry, in-app-only v1 like the filing reminder).
+Registered as a THIRD daily BullMQ sweep in the same
+`worker-notifications.ts` process — still one worker process for three
+lightweight daily jobs.
+
+Mobile: `ComplianceScreen` (`/home/compliance`, Home row 2's third
+button "Hồ sơ") — cards with derived chips (Chưa có / Hết hạn / Còn n
+ngày / Còn hạn, StatusBadge reused), the "Có N mục chưa đủ" header,
+Bắt buộc tag, ONE shared `_DocumentForm` widget for both the inline
+add card and the pushed edit screen (add/edit differ only in submit),
+Vietnamese date pickers, delete behind a confirm dialog.
+`ApiClient` gained `delete` (first DELETE caller in the app).
+
+Explicit cuts versus the mockup (named): no buyer-facing public
+traceability coupling (publishing compliance docs into the public
+`lot_traces` projection is a separate, security-relevant decision, not
+a freebie), no SLA table, no AI listing-text weaving, no b2g staff
+board, no issuing-authority/attachment fields, no renewal workflow.
+
+Verified for real: typecheck clean; e2e 117/117 (5 new: all four
+derived statuses + incomplete count in one case, update-as-renewal +
+delete, idempotent create replay vs fresh key, the sweep's
+exactly-once-per-doc-per-date dedup across two runs with the 30-day
+window and missing/far-future docs silent, tenant isolation);
+migration `0018` applied to the real dev Postgres; `flutter analyze`
+clean (one pre-existing info), tests 4/4. Emulator pass: empty state +
+add form, a document created with today's expiry (correctly derived
+"Hết hạn" — the emulator's clock is +14h skewed, the stored instant and
+logic are exact), then edited to 2026-10-15 and the card correctly
+re-derived to "Còn 54 ngày" with the header flipping to "Đủ giấy tờ
+cần thiết". Same shared-emulator caveat as the connector-status round:
+the APK was externally redeployed mid-smoke again (install path ≠ this
+session's build), so the tap-to-row-in-THIS-database chain is
+unprovable on shared hardware — the write path is proven by the e2e
+suite against the real DB, and the UI behavior by the actor's build of
+this same source.
