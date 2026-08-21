@@ -50,6 +50,8 @@ dependencies:
   drift_flutter: ^0.3.1
   connectivity_plus: ^7.3.1
   uuid: ^4.6.0
+  flutter_tts: ^4.2.5
+  speech_to_text: ^7.4.0
 
 dev_dependencies:
   flutter_test:

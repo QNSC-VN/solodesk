@@ -99,6 +99,24 @@ shape is needed:
   for genuinely open-ended answers only: the business name, the SePay
   token — nothing with a knowable, closed answer set uses this anymore.
 
+**Voice v1 — TTS + STT (on-device, added after CEO request).** The
+elderly audience hears instead of reads, and dictates instead of types:
+- Every ASSISTANT bubble carries a speaker button underneath ("bấm để
+  nghe") — one control, one mental model: tap to speak, tap again (red
+  stop icon) to stop. User bubbles deliberately have none. Speech rate
+  0.45, slower than default for this audience. No Vietnamese voice on
+  the device → the tap says so with install directions, never a silent
+  dead button.
+- The `ChatInput` mic slot (reserved since the first build) is real:
+  TAP-to-talk, not hold-to-talk (shaky hands release early); the live
+  transcript fills the field and stays editable; dictation drafts,
+  the user still presses send — same "human presses the button"
+  boundary as every AI write. No recognizer on the device → honest
+  snackbar, never a dead mic.
+- v2 path (documented, not built): cloud Whisper on ml-analytics if
+  field accents defeat the on-device recognizer (docs Section 8's own
+  named plan); cloud TTS if device voices disappoint.
+
 A `form` step submits a human-readable chat bubble built from each
 field's display `label` (e.g. "Tên sản phẩm: Cà phê Arabica"), never the
 raw machine-readable wire string sent to agent-orchestrator underneath —

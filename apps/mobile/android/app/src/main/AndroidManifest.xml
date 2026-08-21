@@ -31,6 +31,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
+    <!-- Voice v1 (mic dictation): the plugin's own manifest merges
+         RECORD_AUDIO/INTERNET/BLUETOOTH*, but declaring RECORD_AUDIO here
+         too keeps the permission visible in OUR manifest, where a reader
+         auditing the app's mic use will look first. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
@@ -40,6 +45,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- speech_to_text: resolve the on-device recognizer (Android 11+
+             package visibility) — see its README's targeting-SDK-30 note. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>
