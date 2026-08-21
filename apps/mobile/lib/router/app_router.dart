@@ -21,6 +21,7 @@ import '../screens/expense_create_screen.dart';
 import '../screens/connectors_screen.dart';
 import '../screens/messages_screen.dart';
 import '../screens/message_detail_screen.dart';
+import '../screens/compliance_screen.dart';
 
 /// Three real top-level destinations, `SessionState.status` decides which
 /// one — the redirect logic itself, not each screen guessing whether it
@@ -72,6 +73,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home/connectors', builder: (context, state) => const ConnectorsScreen()),
       GoRoute(path: '/home/messages', builder: (context, state) => const MessagesScreen()),
       GoRoute(path: '/home/messages/:id', builder: (context, state) => MessageDetailScreen(messageId: state.pathParameters['id']!)),
+      GoRoute(path: '/home/compliance', builder: (context, state) => const ComplianceScreen()),
     ],
   );
 });

@@ -174,6 +174,18 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                       onPressed: () => context.push('/home/customers'),
                     ),
                   ),
+                  const SizedBox(width: AppMetrics.touchSpacing),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Hồ sơ',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: () async {
+                        await context.push('/home/compliance');
+                        if (!mounted) return;
+                        _refresh();
+                      },
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: AppMetrics.touchSpacing),

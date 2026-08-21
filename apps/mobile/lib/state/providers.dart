@@ -14,6 +14,7 @@ import '../services/customers_service.dart';
 import '../services/expenses_service.dart';
 import '../services/connectors_service.dart';
 import '../services/messages_service.dart';
+import '../services/compliance_service.dart';
 import '../local/local_database.dart';
 import '../local/order_sync_worker.dart';
 
@@ -40,3 +41,4 @@ final customersServiceProvider = Provider((ref) => CustomersService(ref.watch(ap
 final expensesServiceProvider = Provider((ref) => ExpensesService(ref.watch(apiClientProvider)));
 final connectorsServiceProvider = Provider((ref) => ConnectorsService(ref.watch(apiClientProvider)));
 final messagesServiceProvider = Provider((ref) => MessagesService(ref.watch(apiClientProvider)));
+final complianceServiceProvider = Provider((ref) => ComplianceService(ref.watch(apiClientProvider)));

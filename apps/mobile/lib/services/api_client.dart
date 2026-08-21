@@ -62,6 +62,8 @@ class ApiClient {
   Future<T> patch<T>(ApiTarget target, String path, Object? body, T Function(dynamic) parse, {Map<String, String>? headers}) =>
       _send(target, 'PATCH', path, body, parse, extraHeaders: headers);
 
+  Future<T> delete<T>(ApiTarget target, String path, T Function(dynamic) parse) => _send(target, 'DELETE', path, null, parse);
+
   Future<T> _send<T>(ApiTarget target, String method, String path, Object? body, T Function(dynamic) parse,
       {bool isRetry = false, Map<String, String>? extraHeaders}) async {
     final token = await _store.accessToken;
@@ -72,6 +74,7 @@ class ApiClient {
     final res = switch (method) {
       'GET' => await _http.get(uri, headers: headers).timeout(_timeout),
       'PATCH' => await _http.patch(uri, headers: headers, body: encodedBody).timeout(_timeout),
+      'DELETE' => await _http.delete(uri, headers: headers).timeout(_timeout),
       _ => await _http.post(uri, headers: headers, body: encodedBody).timeout(_timeout),
     };
 

@@ -10,6 +10,8 @@ export interface EmailTemplateVars {
   // EMAIL_TEMPLATES' exhaustiveness so a real email channel can be added
   // later without a template/vars registry gap.
   FILING_DEADLINE_APPROACHING: { tenantName: string; quarter: number; year: number; deadline: string };
+  // In-app only for now, same as the filing reminder — DocExpirySweepService never passes `email`.
+  DOC_EXPIRY_APPROACHING: { tenantName: string; docType: string; expiresOn: string };
 }
 
 export interface RenderedEmail {
@@ -35,6 +37,10 @@ export const EMAIL_TEMPLATES: {
   FILING_DEADLINE_APPROACHING: ({ tenantName, quarter, year, deadline }) => ({
     subject: `SoloDesk: Sắp đến hạn kê khai thuế quý ${quarter}/${year}`,
     html: `<p><strong>${tenantName}</strong> sắp đến hạn kê khai và nộp thuế quý ${quarter}/${year} — hạn ${deadline}. Số liệu tạm tính, cần đối chiếu văn bản hiện hành trước khi nộp.</p>`,
+  }),
+  DOC_EXPIRY_APPROACHING: ({ tenantName, docType, expiresOn }) => ({
+    subject: `SoloDesk: Giấy tờ sắp hết hạn — ${docType}`,
+    html: `<p>Giấy tờ <strong>${docType}</strong> của <strong>${tenantName}</strong> sắp hết hạn (hạn ${expiresOn}). Kiểm tra và gia hạn trong mục Hồ sơ.</p>`,
   }),
 };
 
