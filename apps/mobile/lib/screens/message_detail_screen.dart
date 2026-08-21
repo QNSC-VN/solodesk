@@ -5,6 +5,8 @@ import '../state/providers.dart';
 import '../services/api_error_message.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_text_field.dart';
+import '../utils/format.dart';
+import '../widgets/empty_state.dart';
 
 /// One customer message: full text, the reply box (pre-filled empty — v1
 /// has NO AI draft, a named cut), and "Gửi trả lời". The backend RECORDS
@@ -72,11 +74,7 @@ class _MessageDetailScreenState extends ConsumerState<MessageDetailScreen> {
     }
   }
 
-  String _fmt(DateTime dt) {
-    final local = dt.toLocal();
-    return '${local.day}/${local.month}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,7 +83,15 @@ class _MessageDetailScreenState extends ConsumerState<MessageDetailScreen> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(child: Text('Không thể tải tin nhắn.'));
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: EmptyState(
+                title: 'Không thể tải tin nhắn',
+                body: 'Kiểm tra kết nối mạng rồi thử lại.',
+                actionLabel: 'Thử lại',
+                onAction: _refresh,
+              ),
+            );
           }
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final m = snapshot.data!;
@@ -103,7 +109,7 @@ class _MessageDetailScreenState extends ConsumerState<MessageDetailScreen> {
                       children: [
                         Text(m.customerName, style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 2),
-                        Text('${_fmt(m.occurredAt)} · ${m.channel == 'zalo' ? 'Zalo' : m.channel}', style: Theme.of(context).textTheme.bodySmall),
+                        Text('${formatDateTime(m.occurredAt)} · ${m.channel == 'zalo' ? 'Zalo' : m.channel}', style: Theme.of(context).textTheme.bodySmall),
                         const SizedBox(height: 12),
                         Text(m.content, style: Theme.of(context).textTheme.bodyLarge),
                       ],
@@ -121,7 +127,7 @@ class _MessageDetailScreenState extends ConsumerState<MessageDetailScreen> {
                           Text('Đã trả lời', style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 4),
                           if (m.repliedAt != null)
-                            Text(_fmt(m.repliedAt!), style: Theme.of(context).textTheme.bodySmall),
+                            Text(formatDateTime(m.repliedAt!), style: Theme.of(context).textTheme.bodySmall),
                           const SizedBox(height: 8),
                           Text(m.reply!, style: Theme.of(context).textTheme.bodyLarge),
                         ],

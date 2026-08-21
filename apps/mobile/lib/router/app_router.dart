@@ -74,6 +74,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home/messages', builder: (context, state) => const MessagesScreen()),
       GoRoute(path: '/home/messages/:id', builder: (context, state) => MessageDetailScreen(messageId: state.pathParameters['id']!)),
       GoRoute(path: '/home/compliance', builder: (context, state) => const ComplianceScreen()),
+      GoRoute(path: '/home/compliance/:id/edit', builder: (context, state) => ComplianceEditScreen(documentId: state.pathParameters['id']!)),
     ],
   );
 });

@@ -5,6 +5,7 @@ import '../models/customer.dart';
 import '../state/providers.dart';
 import '../widgets/empty_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// Pushed from Home's quick action (`/home/customers`). A real aggregate
 /// list, highest spender first — NOT a stored Customer entity, see
@@ -35,9 +36,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     await future;
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
-  String _formatDate(DateTime d) {
+  String formatDate(DateTime d) {
     final local = d.toLocal();
     return '${local.day}/${local.month}/${local.year}';
   }
@@ -88,12 +88,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 ),
                                 if (customer.lastOrderAt != null) ...[
                                   const SizedBox(height: 2),
-                                  Text('Gần nhất: ${_formatDate(customer.lastOrderAt!)}', style: Theme.of(context).textTheme.bodySmall),
+                                  Text('Gần nhất: ${formatDate(customer.lastOrderAt!)}', style: Theme.of(context).textTheme.bodySmall),
                                 ],
                               ],
                             ),
                           ),
-                          Text(_formatVnd(customer.totalSpent), style: Theme.of(context).textTheme.headlineSmall),
+                          Text(formatVnd(customer.totalSpent), style: Theme.of(context).textTheme.headlineSmall),
                         ],
                       ),
                     ),

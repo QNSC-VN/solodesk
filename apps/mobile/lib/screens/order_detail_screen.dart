@@ -4,6 +4,8 @@ import '../models/order.dart';
 import '../state/providers.dart';
 import '../widgets/status_badge.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
+import '../widgets/empty_state.dart';
 
 /// Pushed from `OrdersTab` (`context.push('/home/orders/$id')`) — a real
 /// detail view, not just a list row; shows every order line (SKU/qty/
@@ -25,7 +27,12 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     _future = ref.read(ordersServiceProvider).getOrder(widget.orderId);
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
+  Future<void> _refresh() async {
+    final future = ref.read(ordersServiceProvider).getOrder(widget.orderId);
+    setState(() => _future = future);
+    await future;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +42,15 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(child: Text('Không thể tải đơn hàng.'));
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: EmptyState(
+                title: 'Không thể tải đơn hàng',
+                body: 'Kiểm tra kết nối mạng rồi thử lại.',
+                actionLabel: 'Thử lại',
+                onAction: _refresh,
+              ),
+            );
           }
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final order = snapshot.data!;
@@ -78,11 +93,11 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('SL: ${line.quantity} × ${_formatVnd(line.unitPrice)}', style: Theme.of(context).textTheme.bodyMedium),
+                              Text('SL: ${line.quantity} × ${formatVnd(line.unitPrice)}', style: Theme.of(context).textTheme.bodyMedium),
                             ],
                           ),
                         ),
-                        Text(_formatVnd(line.lineTotal), style: Theme.of(context).textTheme.titleMedium),
+                        Text(formatVnd(line.lineTotal), style: Theme.of(context).textTheme.titleMedium),
                       ],
                     ),
                   ),
@@ -96,7 +111,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Tổng cộng', style: Theme.of(context).textTheme.titleLarge),
-                      Text(_formatVnd(order.totalAmount), style: Theme.of(context).textTheme.headlineSmall),
+                      Text(formatVnd(order.totalAmount), style: Theme.of(context).textTheme.headlineSmall),
                     ],
                   ),
                 ),

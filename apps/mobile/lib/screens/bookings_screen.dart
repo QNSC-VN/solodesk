@@ -7,6 +7,7 @@ import '../state/providers.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/status_badge.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// The bookings list — pushed from Home's 'Đặt chỗ' quick action. One
 /// `GET /v1/bookings` call for the whole tenant (the endpoint exists
@@ -45,11 +46,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     await future;
   }
 
-  String _fmt(DateTime dt) {
-    final local = dt.toLocal();
-    return '${local.day}/${local.month}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -161,7 +158,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                           Text(b.customerName, style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 2),
                           Text(
-                            '${data.resourceName(b.resourceId)} · ${_fmt(b.startsAt)} · ${b.partySize} khách',
+                            '${data.resourceName(b.resourceId)} · ${formatDateTime(b.startsAt)} · ${b.partySize} khách',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           if (b.isActiveHold && b.holdExpiresAt != null)
@@ -178,7 +175,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        if (b.isExpiredHold) const StatusBadge(status: 'cancelled', label: 'Hết giữ'),
+                        if (b.isExpiredHold) const StatusBadge.variant(variant: StatusVariant.error, label: 'Hết giữ'),
                         StatusBadge(status: b.status, label: bookingStatusLabel(b)),
                       ],
                     ),

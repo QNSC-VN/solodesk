@@ -6,6 +6,7 @@ import '../state/providers.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/empty_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 class OrdersTab extends ConsumerStatefulWidget {
   const OrdersTab({super.key});
@@ -40,7 +41,6 @@ class _OrdersTabState extends ConsumerState<OrdersTab> {
     await future;
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
   @override
   Widget build(BuildContext context) {
@@ -93,13 +93,13 @@ class _OrdersTabState extends ConsumerState<OrdersTab> {
                                 const SizedBox(height: 8),
                                 Wrap(spacing: 6, runSpacing: 6, children: [
                                   StatusBadge(status: order.status),
-                                  if (order.syncStatus == 'pending') const StatusBadge(status: 'pending', label: 'Đang đồng bộ'),
-                                  if (order.syncStatus == 'failed') const StatusBadge(status: 'cancelled', label: 'Đồng bộ lỗi'),
+                                  if (order.syncStatus == 'pending') const StatusBadge.variant(variant: StatusVariant.pending, label: 'Đang đồng bộ'),
+                                  if (order.syncStatus == 'failed') const StatusBadge.variant(variant: StatusVariant.error, label: 'Đồng bộ lỗi'),
                                 ]),
                               ],
                             ),
                           ),
-                          Text(_formatVnd(order.totalAmount), style: Theme.of(context).textTheme.headlineSmall),
+                          Text(formatVnd(order.totalAmount), style: Theme.of(context).textTheme.headlineSmall),
                         ],
                       ),
                     ),

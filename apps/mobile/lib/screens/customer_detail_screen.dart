@@ -4,6 +4,7 @@ import '../models/customer.dart';
 import '../state/providers.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/empty_state.dart';
+import '../utils/format.dart';
 
 /// Pushed from `CustomersScreen` (`/home/customers/:name`) — real order +
 /// booking history for an exact customer-name match, same
@@ -25,9 +26,14 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
     _future = ref.read(customersServiceProvider).getCustomerDetail(widget.name);
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
+  Future<void> _refresh() async {
+    final future = ref.read(customersServiceProvider).getCustomerDetail(widget.name);
+    setState(() => _future = future);
+    await future;
+  }
 
-  String _formatDate(DateTime d) {
+
+  String formatDate(DateTime d) {
     final local = d.toLocal();
     return '${local.day}/${local.month}/${local.year}';
   }
@@ -40,7 +46,15 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(child: Text('Không thể tải thông tin khách hàng.'));
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: EmptyState(
+                title: 'Không thể tải khách hàng',
+                body: 'Kiểm tra kết nối mạng rồi thử lại.',
+                actionLabel: 'Thử lại',
+                onAction: _refresh,
+              ),
+            );
           }
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final customer = snapshot.data!;
@@ -54,7 +68,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Tổng chi tiêu: ${_formatVnd(customer.totalSpent)}', style: Theme.of(context).textTheme.titleLarge),
+                      Text('Tổng chi tiêu: ${formatVnd(customer.totalSpent)}', style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 8),
                       Text('${customer.orderCount} đơn hàng · ${customer.bookingCount} lượt đặt chỗ', style: Theme.of(context).textTheme.bodyMedium),
                       if (customer.primaryChannel != null) ...[
@@ -63,7 +77,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                       ],
                       if (customer.firstOrderAt != null && customer.lastOrderAt != null) ...[
                         const SizedBox(height: 4),
-                        Text('Mua lần đầu: ${_formatDate(customer.firstOrderAt!)} · Gần nhất: ${_formatDate(customer.lastOrderAt!)}', style: Theme.of(context).textTheme.bodyMedium),
+                        Text('Mua lần đầu: ${formatDate(customer.firstOrderAt!)} · Gần nhất: ${formatDate(customer.lastOrderAt!)}', style: Theme.of(context).textTheme.bodyMedium),
                       ],
                     ],
                   ),
@@ -77,8 +91,8 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                   Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
-                      title: Text(_formatVnd(order.totalAmount)),
-                      subtitle: Text('${_formatDate(order.createdAt)} · ${order.channel}'),
+                      title: Text(formatVnd(order.totalAmount)),
+                      subtitle: Text('${formatDate(order.createdAt)} · ${order.channel}'),
                       trailing: StatusBadge(status: order.status),
                     ),
                   ),
@@ -91,7 +105,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                   Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
-                      title: Text('${_formatDate(booking.startsAt)} · SL ${booking.partySize} khách'),
+                      title: Text('${formatDate(booking.startsAt)} · SL ${booking.partySize} khách'),
                       trailing: StatusBadge(status: booking.status),
                     ),
                   ),

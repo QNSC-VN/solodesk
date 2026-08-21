@@ -6,6 +6,8 @@ import '../state/providers.dart';
 import '../services/api_error_message.dart';
 import '../widgets/app_button.dart';
 import '../widgets/status_badge.dart';
+import '../utils/format.dart';
+import '../widgets/empty_state.dart';
 
 /// Pushed from `BookingsScreen` (`context.push('/home/bookings/$id')`).
 /// The three state actions mirror the backend's own guards exactly —
@@ -85,11 +87,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     if (yes == true) await onYes();
   }
 
-  String _fmt(DateTime dt) {
-    final local = dt.toLocal();
-    return '${local.day}/${local.month}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -98,7 +96,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(child: Text('Không thể tải đặt chỗ.'));
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: EmptyState(
+                title: 'Không thể tải đặt chỗ',
+                body: 'Kiểm tra kết nối mạng rồi thử lại.',
+                actionLabel: 'Thử lại',
+                onAction: _refresh,
+              ),
+            );
           }
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final booking = snapshot.data!.booking;
@@ -129,12 +135,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Bắt đầu: ${_fmt(booking.startsAt)}', style: Theme.of(context).textTheme.bodyLarge),
+                      Text('Bắt đầu: ${formatDateTime(booking.startsAt)}', style: Theme.of(context).textTheme.bodyLarge),
                       const SizedBox(height: 4),
-                      Text('Kết thúc: ${_fmt(booking.endsAt)}', style: Theme.of(context).textTheme.bodyLarge),
+                      Text('Kết thúc: ${formatDateTime(booking.endsAt)}', style: Theme.of(context).textTheme.bodyLarge),
                       if (booking.status == 'held' && booking.holdExpiresAt != null) ...[
                         const SizedBox(height: 4),
-                        Text('Hết hạn giữ: ${_fmt(booking.holdExpiresAt!)}', style: Theme.of(context).textTheme.bodyMedium),
+                        Text('Hết hạn giữ: ${formatDateTime(booking.holdExpiresAt!)}', style: Theme.of(context).textTheme.bodyMedium),
                         if (booking.isExpiredHold)
                           Text('Đã hết hạn giữ chỗ — không còn chiếc chỗ.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.error)),
                       ],
@@ -180,7 +186,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   isLoading: _isActing,
                   onPressed: () => _confirmDialog(
                     'Hủy đặt chỗ này?',
-                    '${booking.customerName} · ${_fmt(booking.startsAt)}',
+                    '${booking.customerName} · ${formatDateTime(booking.startsAt)}',
                     () => _act(() => ref.read(bookingsServiceProvider).cancelBooking(booking.id), 'Đã hủy đặt chỗ.'),
                   ),
                 ),
@@ -193,7 +199,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   isLoading: _isActing,
                   onPressed: () => _confirmDialog(
                     'Đánh dấu khách không đến?',
-                    '${booking.customerName} · ${_fmt(booking.startsAt)}',
+                    '${booking.customerName} · ${formatDateTime(booking.startsAt)}',
                     () => _act(() => ref.read(bookingsServiceProvider).markNoShow(booking.id), 'Đã đánh dấu không đến.'),
                   ),
                 ),

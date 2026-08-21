@@ -1,4 +1,8 @@
 /// Mirrors backend-api's `GET /v1/lots/stock-summary` response.
+/// The single low-stock rule — Home's badge count and the Stock screen's
+/// red rows must agree, so the threshold lives with the model, once.
+const double lowStockThreshold = 5;
+
 class StockSummaryItem {
   final String skuId;
   final String skuCode;

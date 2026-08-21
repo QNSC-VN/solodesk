@@ -9,6 +9,7 @@ import '../widgets/sales_trend_chart.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/app_button.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// Today's real numbers, a real 7-day trend (once there's enough history
 /// to be honest — see `SalesTrendChart`'s own doc comment), the most
@@ -70,7 +71,6 @@ class _HomeTabState extends ConsumerState<HomeTab> {
 
     // A real but simple threshold — documented as such, not tuned per-SKU
     // yet (a real per-SKU reorder point is a separate, later feature).
-    const lowStockThreshold = 5;
     final lowStockCount = stock.where((s) => s.isActive && (double.tryParse(s.totalAvailable) ?? 0) <= lowStockThreshold).length;
 
     final last7Days = List.generate(7, (i) => DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i)));
@@ -103,7 +103,6 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     await future;
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +282,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(_formatVnd(order.totalAmount), style: Theme.of(context).textTheme.titleMedium),
+                          Text(formatVnd(order.totalAmount), style: Theme.of(context).textTheme.titleMedium),
                           StatusBadge(status: order.status),
                         ],
                       ),

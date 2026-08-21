@@ -8,6 +8,7 @@ import '../widgets/app_text_field.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/status_badge.dart';
 import '../theme/app_theme.dart';
+import 'package:go_router/go_router.dart';
 
 /// "Hồ sơ để bán cho khách tổ chức" (mockup's Kho-tab card, now its own
 /// screen): the tenant's compliance documents with DERIVED status chips
@@ -38,10 +39,10 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
   }
 
   StatusBadge _statusBadge(ComplianceDocument d) => switch (d.status) {
-        'missing' => const StatusBadge(status: 'cancelled', label: 'Chưa có'),
-        'expired' => const StatusBadge(status: 'cancelled', label: 'Hết hạn'),
-        'expiring' => StatusBadge(status: 'pending', label: d.daysRemaining != null ? 'Còn ${d.daysRemaining} ngày' : 'Sắp hết hạn'),
-        _ => const StatusBadge(status: 'confirmed', label: 'Còn hạn'),
+        'missing' => const StatusBadge.variant(variant: StatusVariant.error, label: 'Chưa có'),
+        'expired' => const StatusBadge.variant(variant: StatusVariant.error, label: 'Hết hạn'),
+        'expiring' => StatusBadge.variant(variant: StatusVariant.pending, label: d.daysRemaining != null ? 'Còn ${d.daysRemaining} ngày' : 'Sắp hết hạn'),
+        _ => const StatusBadge.variant(variant: StatusVariant.success, label: 'Còn hạn'),
       };
 
   Future<void> _confirmDelete(ComplianceDocument d) async {
@@ -67,13 +68,10 @@ class _ComplianceScreenState extends ConsumerState<ComplianceScreen> {
     }
   }
 
-  void _openEdit(ComplianceDocument d) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => _EditDocumentScreen(existing: d, onSaved: _refresh),
-        fullscreenDialog: true,
-      ),
-    );
+  Future<void> _openEdit(ComplianceDocument d) async {
+    await context.push('/home/compliance/${d.id}/edit');
+    if (!mounted) return;
+    _refresh();
   }
 
   @override
@@ -325,22 +323,52 @@ class _AddDocumentCard extends StatelessWidget {
   }
 }
 
-class _EditDocumentScreen extends StatelessWidget {
-  final ComplianceDocument existing;
-  final VoidCallback onSaved;
-  const _EditDocumentScreen({required this.existing, required this.onSaved});
+/// Public so the router can own it (`/home/compliance/:id/edit`) — the app's
+/// one navigation convention; the old imperative MaterialPageRoute push was
+/// the only nested-Navigator bypass in the app. Fetches its own document so
+/// the route needs only the id.
+class ComplianceEditScreen extends ConsumerStatefulWidget {
+  final String documentId;
+  const ComplianceEditScreen({super.key, required this.documentId});
+
+  @override
+  ConsumerState<ComplianceEditScreen> createState() => _ComplianceEditScreenState();
+}
+
+class _ComplianceEditScreenState extends ConsumerState<ComplianceEditScreen> {
+  late Future<ComplianceDocument> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<ComplianceDocument> _load() async {
+    final docs = await ref.read(complianceServiceProvider).getDocuments();
+    return docs.firstWhere((d) => d.id == widget.documentId);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Sửa giấy tờ')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: _DocumentForm(
-          existing: existing,
-          onSaved: onSaved,
-          onDone: () => Navigator.of(context).pop(),
-        ),
+      body: FutureBuilder<ComplianceDocument>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Không thể tải giấy tờ.'));
+          }
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: _DocumentForm(
+              existing: snapshot.data!,
+              onSaved: () {},
+              onDone: () => Navigator.of(context).pop(true),
+            ),
+          );
+        },
       ),
     );
   }

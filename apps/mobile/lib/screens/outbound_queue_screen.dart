@@ -6,6 +6,7 @@ import '../widgets/app_button.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/empty_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// "Hàng đợi gửi đi" — one of the CEO mockup's explicitly-missing screens,
 /// and in this app it IS just `LocalOrders` filtered to `syncStatus !=
@@ -48,7 +49,6 @@ class _OutboundQueueScreenState extends ConsumerState<OutboundQueueScreen> {
     }
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
   @override
   Widget build(BuildContext context) {
@@ -83,12 +83,12 @@ class _OutboundQueueScreenState extends ConsumerState<OutboundQueueScreen> {
                           children: [
                             Text(order.customerName ?? 'Khách lẻ', style: Theme.of(context).textTheme.titleLarge),
                             order.syncStatus == 'failed'
-                                ? const StatusBadge(status: 'cancelled', label: 'Lỗi')
-                                : const StatusBadge(status: 'pending', label: 'Đang chờ'),
+                                ? const StatusBadge.variant(variant: StatusVariant.error, label: 'Lỗi')
+                                : const StatusBadge.variant(variant: StatusVariant.pending, label: 'Đang chờ'),
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Text('${order.lines.length} sản phẩm · ${_formatVnd(order.totalAmount)}', style: Theme.of(context).textTheme.bodyMedium),
+                        Text('${order.lines.length} sản phẩm · ${formatVnd(order.totalAmount)}', style: Theme.of(context).textTheme.bodyMedium),
                         if (order.syncError != null) ...[
                           const SizedBox(height: 8),
                           Text(order.syncError!, style: TextStyle(color: AppColors.destructive)),

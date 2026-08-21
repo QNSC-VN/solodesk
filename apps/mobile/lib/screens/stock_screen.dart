@@ -20,7 +20,7 @@ class StockScreen extends ConsumerStatefulWidget {
 class _StockScreenState extends ConsumerState<StockScreen> {
   late Future<List<StockSummaryItem>> _future;
 
-  static const _lowStockThreshold = 5;
+
 
   @override
   void initState() {
@@ -43,6 +43,17 @@ class _StockScreenState extends ConsumerState<StockScreen> {
         child: FutureBuilder<List<StockSummaryItem>>(
           future: _future,
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: EmptyState(
+                  title: 'Không thể tải tồn kho',
+                  body: 'Kiểm tra kết nối mạng rồi thử lại.',
+                  actionLabel: 'Thử lại',
+                  onAction: _refresh,
+                ),
+              );
+            }
             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
             final items = snapshot.data!;
             if (items.isEmpty) {
@@ -58,7 +69,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
               itemBuilder: (context, index) {
                 final item = items[index];
                 final available = double.tryParse(item.totalAvailable) ?? 0;
-                final isLow = item.isActive && available <= _lowStockThreshold;
+                final isLow = item.isActive && available <= lowStockThreshold;
                 return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),

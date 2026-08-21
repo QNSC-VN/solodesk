@@ -5,6 +5,7 @@ import '../models/expense.dart';
 import '../state/providers.dart';
 import '../widgets/empty_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// Pushed from Home's quick action (`/home/expenses`). Real spend this
 /// month — total, per-category breakdown, and two real compliance flags
@@ -39,9 +40,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     await future;
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
-  String _formatDate(DateTime d) {
+  String formatDate(DateTime d) {
     final local = d.toLocal();
     return '${local.day}/${local.month}/${local.year}';
   }
@@ -82,20 +82,20 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Chi tháng này: ${_formatVnd(summary.total)}', style: Theme.of(context).textTheme.titleLarge),
+                        Text('Chi tháng này: ${formatVnd(summary.total)}', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 4),
                         Text('${summary.count} khoản chi', style: Theme.of(context).textTheme.bodyMedium),
                         if (double.tryParse(summary.noDocumentationTotal) != null && double.parse(summary.noDocumentationTotal) > 0) ...[
                           const SizedBox(height: 8),
                           Text(
-                            'Không có chứng từ: ${_formatVnd(summary.noDocumentationTotal)} — sẽ không được khấu trừ khi lên doanh nghiệp.',
+                            'Không có chứng từ: ${formatVnd(summary.noDocumentationTotal)} — sẽ không được khấu trừ khi lên doanh nghiệp.',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.accent),
                           ),
                         ],
                         if (double.tryParse(summary.personalWalletTotal) != null && double.parse(summary.personalWalletTotal) > 0) ...[
                           const SizedBox(height: 4),
                           Text(
-                            'Trả từ tiền cá nhân: ${_formatVnd(summary.personalWalletTotal)}',
+                            'Trả từ tiền cá nhân: ${formatVnd(summary.personalWalletTotal)}',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.mutedForeground),
                           ),
                         ],
@@ -113,7 +113,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                       child: ListTile(
                         dense: true,
                         title: Text(expenseCategoryLabel(cat.category)),
-                        trailing: Text(_formatVnd(cat.total)),
+                        trailing: Text(formatVnd(cat.total)),
                       ),
                     ),
                 ],
@@ -128,8 +128,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
                         title: Text(expense.description),
-                        subtitle: Text('${expenseCategoryLabel(expense.category)} · ${_formatDate(expense.spentAt)}'),
-                        trailing: Text(_formatVnd(expense.amount), style: Theme.of(context).textTheme.titleMedium),
+                        subtitle: Text('${expenseCategoryLabel(expense.category)} · ${formatDate(expense.spentAt)}'),
+                        trailing: Text(formatVnd(expense.amount), style: Theme.of(context).textTheme.titleMedium),
                       ),
                     ),
               ],

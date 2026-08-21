@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/connector_status.dart';
 import '../state/providers.dart';
 import '../widgets/empty_state.dart';
-import '../services/api_client.dart';
+import '../services/api_error_message.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
+import '../widgets/status_badge.dart';
 
 /// Pushed from Home's quick action (`/home/connectors`). Read-only v1 —
 /// shows the full 13-provider catalog and lets a tenant re-run a real
@@ -60,20 +62,16 @@ class _ConnectorsScreenState extends ConsumerState<ConnectorsScreen> {
       final ok = await ref.read(connectorsServiceProvider).verify(provider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Kết nối hoạt động tốt' : 'Kết nối lỗi — kiểm tra lại thông tin đã cấu hình')));
-    } on ApiException catch (e) {
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể kiểm tra: ${e.body}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorMessage(e, 'Không thể kiểm tra. Kiểm tra kết nối mạng.'))));
     } finally {
       if (mounted) setState(() => _verifying.remove(provider));
       await _refresh();
     }
   }
 
-  String _formatDate(DateTime d) {
-    final local = d.toLocal();
-    return '${local.day}/${local.month}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,7 +95,7 @@ class _ConnectorsScreenState extends ConsumerState<ConnectorsScreen> {
                 label: _labels[connectors[index].provider] ?? connectors[index].provider,
                 isVerifying: _verifying.contains(connectors[index].provider),
                 onVerify: () => _verify(connectors[index].provider),
-                formatDate: _formatDate,
+                formatDate: formatDate,
               ),
             );
           },
@@ -158,34 +156,14 @@ class _ConnectorTile extends StatelessWidget {
   }
 
   Widget _statusChip(BuildContext context) {
-    late final Color bg;
-    late final Color fg;
-    late final String text;
-    if (!status.isImplemented) {
-      bg = AppColors.muted;
-      fg = AppColors.mutedForeground;
-      text = 'Chưa hỗ trợ';
-    } else if (!status.isConfigured) {
-      bg = AppColors.muted;
-      fg = AppColors.mutedForeground;
-      text = 'Chưa cấu hình';
-    } else if (status.isActive && status.lastVerificationOk == true) {
-      bg = AppColors.secondary.withValues(alpha: 0.18);
-      fg = const Color(0xFF166534);
-      text = 'Hoạt động';
-    } else if (status.isActive && status.lastVerificationOk == false) {
-      bg = AppColors.destructive.withValues(alpha: 0.12);
-      fg = AppColors.destructive;
-      text = 'Lỗi';
-    } else {
-      bg = AppColors.accent.withValues(alpha: 0.18);
-      fg = const Color(0xFF854D0E);
-      text = status.isActive ? 'Chưa kiểm tra' : 'Đã tắt';
+    if (!status.isImplemented) return const StatusBadge.variant(variant: StatusVariant.neutral, label: 'Chưa hỗ trợ');
+    if (!status.isConfigured) return const StatusBadge.variant(variant: StatusVariant.neutral, label: 'Chưa cấu hình');
+    if (status.isActive && status.lastVerificationOk == true) {
+      return const StatusBadge.variant(variant: StatusVariant.success, label: 'Hoạt động');
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(text, style: TextStyle(color: fg, fontSize: 13, fontWeight: FontWeight.w600)),
-    );
+    if (status.isActive && status.lastVerificationOk == false) {
+      return const StatusBadge.variant(variant: StatusVariant.error, label: 'Lỗi');
+    }
+    return StatusBadge.variant(variant: StatusVariant.pending, label: status.isActive ? 'Chưa kiểm tra' : 'Đã tắt');
   }
 }

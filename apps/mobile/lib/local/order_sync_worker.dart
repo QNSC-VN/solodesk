@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../services/api_client.dart';
+import '../services/api_error_message.dart';
 import 'local_database.dart';
 
 /// Drains every `pending` `LocalOrders` row against the real backend-api,
@@ -60,26 +61,10 @@ class OrderSyncWorker {
       );
     } on ApiException catch (e) {
       final retryable = e.status == 429 || e.status >= 500;
-      await _db.markAttemptFailed(clientId: row.clientId, retryable: retryable, reason: _reasonFor(e));
+      await _db.markAttemptFailed(clientId: row.clientId, retryable: retryable, reason: apiErrorMessage(e, 'Không có kết nối mạng.'));
     } catch (_) {
       await _db.markAttemptFailed(clientId: row.clientId, retryable: true, reason: 'Không có kết nối mạng.');
     }
   }
 
-  /// The real wire envelope is `{ error: { code, message, details,
-  /// correlationId } }` (`GlobalExceptionFilter`), not Nest's bare-default
-  /// `{ statusCode, message }` — parse the real shape, not the framework
-  /// default one.
-  String _reasonFor(ApiException e) {
-    try {
-      final body = jsonDecode(e.body) as Map<String, dynamic>;
-      final error = body['error'] as Map<String, dynamic>?;
-      final message = error?['message'];
-      if (message is String && message.isNotEmpty) return message;
-      if (message is List && message.isNotEmpty) return message.join(', ');
-    } catch (_) {
-      // fall through to the generic reason below
-    }
-    return 'Lỗi máy chủ (${e.status}).';
-  }
 }

@@ -8,6 +8,7 @@ import '../widgets/app_text_field.dart';
 import '../widgets/choice_buttons.dart';
 import '../widgets/empty_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// Pushed from Home's quick action (`/home/tax`). The mockup's own quarterly
 /// HKD tax estimate — real revenue, real exemption/rate math, a real filing
@@ -113,9 +114,8 @@ class _TaxScreenState extends ConsumerState<TaxScreen> {
     }
   }
 
-  String _formatVnd(String amount) => '${double.tryParse(amount)?.toStringAsFixed(0) ?? amount} đ';
 
-  String _formatDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+  String formatDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +196,7 @@ class _TaxScreenState extends ConsumerState<TaxScreen> {
                 children: [
                   Text('Quý ${estimate.quarter}/${estimate.year} — ${estimate.rateGroup!.name}', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
-                  Text('Doanh thu: ${_formatVnd(estimate.revenue)}', style: Theme.of(context).textTheme.bodyLarge),
+                  Text('Doanh thu: ${formatVnd(estimate.revenue)}', style: Theme.of(context).textTheme.bodyLarge),
                   if (estimate.isExempt) ...[
                     const SizedBox(height: 4),
                     Text('Doanh thu luỹ kế năm chưa quá 200 triệu — miễn thuế GTGT và TNCN.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.primary)),
@@ -235,8 +235,8 @@ class _TaxScreenState extends ConsumerState<TaxScreen> {
                     estimate.isFiled
                         ? 'Đã đóng sổ kỳ này.'
                         : daysRemaining >= 0
-                            ? 'Còn $daysRemaining ngày — hạn ${_formatDate(estimate.filingDeadline)}.'
-                            : 'Đã quá hạn ${-daysRemaining} ngày — hạn ${_formatDate(estimate.filingDeadline)}.',
+                            ? 'Còn $daysRemaining ngày — hạn ${formatDate(estimate.filingDeadline)}.'
+                            : 'Đã quá hạn ${-daysRemaining} ngày — hạn ${formatDate(estimate.filingDeadline)}.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isUrgent ? AppColors.destructive : null, fontWeight: isUrgent ? FontWeight.w600 : null),
                   ),
                 ],
@@ -261,7 +261,7 @@ class _TaxScreenState extends ConsumerState<TaxScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: Theme.of(context).textTheme.bodyMedium),
-        Text(_formatVnd(amount), style: style),
+        Text(formatVnd(amount), style: style),
       ],
     );
   }

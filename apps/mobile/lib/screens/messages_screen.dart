@@ -6,6 +6,7 @@ import '../state/providers.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/status_badge.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 
 /// The customer inbox ("Hội thoại với khách") — a FLAT message list, newest
 /// first, no threads (the mockup's own shape). "Unread" == not yet replied:
@@ -33,11 +34,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     await future;
   }
 
-  String _fmt(DateTime dt) {
-    final local = dt.toLocal();
-    return '${local.day}/${local.month}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,14 +99,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 2),
-                                Text('${_fmt(m.occurredAt)} · ${m.channel == 'zalo' ? 'Zalo' : m.channel}', style: Theme.of(context).textTheme.bodySmall),
+                                Text('${formatDateTime(m.occurredAt)} · ${m.channel == 'zalo' ? 'Zalo' : m.channel}', style: Theme.of(context).textTheme.bodySmall),
                               ],
                             ),
                           ),
                           const SizedBox(width: 8),
                           m.isAnswered
-                              ? const StatusBadge(status: 'confirmed', label: 'Đã trả lời')
-                              : const StatusBadge(status: 'pending', label: 'Chưa trả lời'),
+                              ? const StatusBadge.variant(variant: StatusVariant.success, label: 'Đã trả lời')
+                              : const StatusBadge.variant(variant: StatusVariant.pending, label: 'Chưa trả lời'),
                         ],
                       ),
                     ),

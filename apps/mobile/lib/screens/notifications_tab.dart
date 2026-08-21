@@ -44,6 +44,17 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab> {
       child: FutureBuilder<List<AppNotification>>(
         future: _future,
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: EmptyState(
+                title: 'Không thể tải thông báo',
+                body: 'Kiểm tra kết nối mạng rồi thử lại.',
+                actionLabel: 'Thử lại',
+                onAction: _refresh,
+              ),
+            );
+          }
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final notifications = snapshot.data!;
           if (notifications.isEmpty) {
