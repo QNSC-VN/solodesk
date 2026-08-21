@@ -1,4 +1,10 @@
 import { pgSchema, uuid, text, boolean, timestamp, customType, unique } from 'drizzle-orm/pg-core';
+// The ONE canonical provider union lives in the vault domain (it's product
+// vocabulary, not storage detail) — re-exported here only for the $type<>()
+// below, so the two can never drift apart again (they silently had, once).
+import type { ConnectorProvider } from '../../modules/vault/domain/vault.types';
+
+export type { ConnectorProvider };
 
 export const vaultSchema = pgSchema('vault');
 
@@ -7,21 +13,6 @@ const bytea = customType<{ data: Buffer }>({
     return 'bytea';
   },
 });
-
-export type ConnectorProvider =
-  | 'sepay'
-  | 'ghn'
-  | 'shopee'
-  | 'tiktok_shop'
-  | 'lazada'
-  | 'ghtk'
-  | 'viettelpost'
-  | 'misa_meinvoice'
-  | 'viettel_sinvoice'
-  | 'vnpt_invoice'
-  | 'booking_com'
-  | 'agoda'
-  | 'national_free_platform';
 
 /** `tenantId` is a plain uuid, not an FK — see this table's migration header comment. */
 export const credentials = vaultSchema.table(

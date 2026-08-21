@@ -33,6 +33,11 @@ function makeStubAdapter(provider: ConnectorProvider, displayName: string) {
 }
 
 export class ViettelpostAdapter extends makeStubAdapter('viettelpost', 'ViettelPost') {}
+// Zalo has NO adapter at all — not even a verify-shaped one — but is NOT a
+// stub either: its real, live piece today is the inbound-message webhook
+// (`connectors/zalo/zalo-webhook.controller.ts`), which needs no adapter.
+// The catalog's `isImplemented` flag deliberately does NOT include zalo:
+// "implemented" means "has a callable adapter", and it doesn't.
 export class MisaMeinvoiceAdapter extends makeStubAdapter('misa_meinvoice', 'MISA meInvoice') {}
 export class ViettelSinvoiceAdapter extends makeStubAdapter('viettel_sinvoice', 'Viettel S-Invoice') {}
 export class VnptInvoiceAdapter extends makeStubAdapter('vnpt_invoice', 'VNPT Invoice') {}

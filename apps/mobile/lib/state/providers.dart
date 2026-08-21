@@ -13,6 +13,7 @@ import '../services/tax_service.dart';
 import '../services/customers_service.dart';
 import '../services/expenses_service.dart';
 import '../services/connectors_service.dart';
+import '../services/messages_service.dart';
 import '../local/local_database.dart';
 import '../local/order_sync_worker.dart';
 
@@ -38,3 +39,4 @@ final taxServiceProvider = Provider((ref) => TaxService(ref.watch(apiClientProvi
 final customersServiceProvider = Provider((ref) => CustomersService(ref.watch(apiClientProvider)));
 final expensesServiceProvider = Provider((ref) => ExpensesService(ref.watch(apiClientProvider)));
 final connectorsServiceProvider = Provider((ref) => ConnectorsService(ref.watch(apiClientProvider)));
+final messagesServiceProvider = Provider((ref) => MessagesService(ref.watch(apiClientProvider)));

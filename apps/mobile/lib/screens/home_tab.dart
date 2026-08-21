@@ -53,11 +53,15 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     // to "unknown" rather than take the whole Home tab down with it.
     final stockFuture = ref.read(stockServiceProvider).getStockSummary().catchError((_) => <StockSummaryItem>[]);
     final unreadFuture = ref.read(notificationsServiceProvider).getUnreadCount().catchError((_) => 0);
+    // Unanswered customer messages — the inbox quick-action's live count;
+    // online-only like stock/notifications, degrades to 0.
+    final unansweredFuture = ref.read(messagesServiceProvider).getUnansweredCount().catchError((_) => 0);
 
-    final results = await Future.wait([ordersFuture, stockFuture, unreadFuture]);
+    final results = await Future.wait([ordersFuture, stockFuture, unreadFuture, unansweredFuture]);
     final orders = results[0] as List<Order>;
     final stock = results[1] as List<StockSummaryItem>;
     final unreadCount = results[2] as int;
+    final unansweredMessages = results[3] as int;
 
     final now = DateTime.now();
     final validOrders = orders.where((o) => o.status != 'cancelled').toList();
@@ -87,6 +91,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
       showTrend: daysWithRevenue >= 4, // chart guidance: fewer real points reads as noise, not a trend
       recentOrders: recentOrders.take(3).toList(),
       pendingSyncCount: pendingSyncCount,
+      unansweredMessages: unansweredMessages,
     );
   }
 
@@ -193,6 +198,18 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                       onPressed: () => context.push('/home/connectors'),
                     ),
                   ),
+                  const SizedBox(width: AppMetrics.touchSpacing),
+                  Expanded(
+                    child: AppButton(
+                      label: summary.unansweredMessages > 0 ? 'Tin nhắn (${summary.unansweredMessages})' : 'Tin nhắn',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: () async {
+                        await context.push('/home/messages');
+                        if (!mounted) return;
+                        _refresh();
+                      },
+                    ),
+                  ),
                 ],
               ),
               if (summary.pendingSyncCount > 0) ...[
@@ -278,6 +295,7 @@ class _HomeSummary {
   final bool showTrend;
   final List<Order> recentOrders;
   final int pendingSyncCount;
+  final int unansweredMessages;
 
   _HomeSummary({
     required this.todaysRevenue,
@@ -288,5 +306,6 @@ class _HomeSummary {
     required this.showTrend,
     required this.recentOrders,
     required this.pendingSyncCount,
+    required this.unansweredMessages,
   });
 }

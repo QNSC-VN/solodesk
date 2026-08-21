@@ -1,5 +1,6 @@
 export type ConnectorProvider =
   | 'sepay'
+  | 'zalo'
   | 'ghn'
   | 'shopee'
   | 'tiktok_shop'
@@ -16,6 +17,7 @@ export type ConnectorProvider =
 /** Single source of truth for valid providers — both `VaultController` and `ConnectorVerificationController` validate against this so the two can never silently drift apart. */
 export const CONNECTOR_PROVIDERS: readonly ConnectorProvider[] = [
   'sepay',
+  'zalo',
   'ghn',
   'shopee',
   'tiktok_shop',

@@ -7,12 +7,13 @@ import { GhtkModule } from './ghtk/ghtk.module';
 import { ShopeeModule } from './shopee/shopee.module';
 import { TiktokShopModule } from './tiktok-shop/tiktok-shop.module';
 import { LazadaModule } from './lazada/lazada.module';
+import { ZaloModule } from './zalo/zalo.module';
 import { StubConnectorsModule } from './stub-connectors';
 import { ConnectorVerificationService } from './connector-verification.service';
 import { ConnectorVerificationController } from './connector-verification.controller';
 
 @Module({
-  imports: [VaultModule, WebhooksModule, SepayModule, GhnModule, GhtkModule, ShopeeModule, TiktokShopModule, LazadaModule, StubConnectorsModule],
+  imports: [VaultModule, WebhooksModule, SepayModule, GhnModule, GhtkModule, ShopeeModule, TiktokShopModule, LazadaModule, ZaloModule, StubConnectorsModule],
   controllers: [ConnectorVerificationController],
   providers: [ConnectorVerificationService],
 })
