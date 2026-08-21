@@ -46,8 +46,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       await stt.stop();
       return;
     }
+    // One audio channel at a time: if the phone is currently READING a
+    // reply aloud, stop it before opening the mic, or the recognizer
+    // transcribes the phone's own speaker.
+    await ref.read(ttsServiceProvider).stop();
     await stt.start(
       onPartial: (words) {
+        if (!mounted) return;
         // Keep the field as the single source of truth — partials replace
         // the dictation so far, never append to stale partials.
         _controller.value = TextEditingValue(
@@ -56,7 +61,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         );
       },
       onFinal: (words) {
-        if (words.trim().isEmpty) return;
+        if (!mounted || words.trim().isEmpty) return;
         _controller.value = TextEditingValue(
           text: words,
           selection: TextSelection.collapsed(offset: words.length),

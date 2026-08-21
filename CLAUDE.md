@@ -3238,3 +3238,31 @@ emulator: no microphone input can be injected, so the transcription
 quality itself — and TTS audibility — are real-device checks, flagged
 for the first physical-device session, same as every voice-quality
 question ultimately is.
+
+### Voice v1 audit round (same day)
+
+Architect self-review of the first cut found the STRUCTURE right
+(concrete singleton services + Riverpod + ValueNotifier — consistent
+with every other service in this app, no speculative interface for a
+v2 cloud path that doesn't exist yet; the services' public surface is
+deliberately free of plugin types so that future extraction is
+mechanical) but four real defects in the details, all fixed:
+
+1. **Which-button-is-speaking ambiguity** — the original global
+   `isSpeaking` bool made EVERY bubble's speaker button flip to the red
+   stop state at once, and any button stopped the speech. Now the
+   service tracks `speakingText` (one engine speaks one thing at a
+   time) and only the button whose text is live shows stop; tapping a
+   different bubble switches to it. Verified on-emulator with two
+   assistant bubbles: exactly one red.
+2. **init() race, both services** — a `_initialized` bool set BEFORE
+   the awaits meant two rapid tappers could race past the voice-list /
+   recognizer probe and get a wrong "unavailable". Both now cache the
+   init FUTURE (the ApiClient `_refreshInFlight` shape, applied to
+   init).
+3. **Mic-over-speaker echo** — starting dictation while a reply was
+   being read aloud would transcribe the phone's own speaker; the mic
+   toggle now stops TTS first (one audio channel at a time).
+4. **Disposed-controller writes** — STT partial/final callbacks now
+   `mounted`-guard their TextEditingController writes (navigate away
+   mid-dictation no longer writes to a dead field).

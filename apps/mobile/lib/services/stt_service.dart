@@ -21,16 +21,19 @@ class SttService {
   final isListening = ValueNotifier<bool>(false);
   final isAvailable = ValueNotifier<bool>(false);
 
-  bool _initialized = false;
+  Future<void>? _initFuture;
 
-  Future<void> init() async {
-    if (_initialized) return;
-    _initialized = true;
-    try {
-      isAvailable.value = await _stt.initialize(onError: (_) {}, onStatus: (s) => isListening.value = s == 'listening');
-    } catch (_) {
-      isAvailable.value = false; // no recognizer on this device/emulator
-    }
+  /// Future-cached, not bool-flagged — two rapid callers must not race the
+  /// recognizer probe (a bool set before the await lets the second caller
+  /// read a not-yet-resolved availability).
+  Future<void> init() {
+    return _initFuture ??= () async {
+      try {
+        isAvailable.value = await _stt.initialize(onError: (_) {}, onStatus: (s) => isListening.value = s == 'listening');
+      } catch (_) {
+        isAvailable.value = false; // no recognizer on this device/emulator
+      }
+    }();
   }
 
   /// Starts dictation. [onPartial] fires continuously as words are heard
@@ -58,7 +61,7 @@ class SttService {
   }
 
   Future<void> stop() async {
-    if (!_initialized) return;
+    if (_initFuture == null) return;
     await _stt.stop();
     isListening.value = false;
   }
