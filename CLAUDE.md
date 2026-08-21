@@ -3181,3 +3181,60 @@ session's build), so the tap-to-row-in-THIS-database chain is
 unprovable on shared hardware — the write path is proven by the e2e
 suite against the real DB, and the UI behavior by the actor's build of
 this same source.
+
+## Voice v1 — on-device TTS + STT for the elderly audience
+
+CEO request: the app's users are mostly older/non-technical, so the AI
+should be hearable (tap a button to read text aloud) and answerable by
+voice (ChatGPT-style dictation), in onboarding and the AI chat.
+Research first (see the session summary's source links): on-device won
+for v1 — zero new credentials (this repo already carries enough
+"let key, input later" placeholders), zero new deployables, zero
+per-minute cost, and Vietnamese quality is genuinely good through
+Google's on-device stack on the GMS phones this audience actually owns.
+
+What shipped, all in `apps/mobile`:
+- **TTS** (`flutter_tts`, Android system TTS, `vi-VN`): `TtsService`
+  probes `getVoices` for any Vietnamese voice at init — the honest
+  degradation matters more than the happy path. `SpeakButton` (one
+  control: tap to speak, red stop icon while speaking, rate 0.45 for
+  elderly listeners) sits under every ASSISTANT `ChatBubble` — user
+  bubbles deliberately have none. No vi voice → the tap opens a
+  snackbar with install directions (Cài đặt → Ngôn ngữ và nhập → Đầu
+  ra chuyển văn bản thành lời nói), never a silent dead button.
+- **STT** (`speech_to_text`, the device's Google recognizer, `vi_VN`):
+  `SttService` + the mic slot `ChatInput` has RESERVED since its first
+  build (the layout was designed for exactly this day — no rework).
+  TAP-to-talk, not hold-to-talk (shaky hands release early); the live
+  partial transcript fills the input field and stays EDITABLE;
+  dictation drafts, the user still presses send — the same "human
+  presses the button" boundary as every AI write in this product.
+  No recognizer (some emulators, de-Googled phones) → honest snackbar.
+- `AndroidManifest` gained the `RecognitionService` `<queries>` entry
+  (Android 11+ package visibility, the plugin README's own requirement)
+  and an explicit `RECORD_AUDIO` line (the plugin's manifest would
+  merge it anyway; declaring it here puts the mic permission where an
+  auditor of THIS app looks first).
+
+Deliberate cuts, named: no auto-read of AI replies (a setting for it is
+a real future toggle, not a default — unsolicited audio startles this
+audience more than it helps), no onboarding-step auto-speak, no
+in-app text-size/slow-speech settings yet (18sp base + 0.45 rate cover
+v1), no iOS work (flutter_tts quality on iOS is poor and iOS is not a
+target). v2 paths documented in the code where they'll be needed: cloud
+Whisper on ml-analytics (docs Section 8's own named plan) if field
+accents (Gia Lai/Bình Định) defeat the on-device recognizer; cloud vi
+TTS if device voices disappoint on real hardware.
+
+Verified for real: analyze clean (one pre-existing info), tests 4/4,
+real emulator pass on the AI-assistant tab — the mic button renders in
+its reserved slot, tapping it STARTS listening (red stop icon +
+"Đang nghe..." hint; this AVD ships a recognizer), a real mocked-LLM
+conversation turn (real `get_stock_level` against real Postgres)
+produced an assistant bubble carrying the speaker button, and tapping
+it flipped to the actively-SPEAKING state (a Vietnamese TTS voice
+exists on this emulator) and back on second tap. Honest limits of an
+emulator: no microphone input can be injected, so the transcription
+quality itself — and TTS audibility — are real-device checks, flagged
+for the first physical-device session, same as every voice-quality
+question ultimately is.
