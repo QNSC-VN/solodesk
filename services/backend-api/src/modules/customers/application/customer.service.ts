@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { assertTenantMatchesSession } from '../../../platform/tenant-context';
+import { compareMoney } from '../../../platform/money';
 import { CUSTOMER_REPOSITORY, type ICustomerRepository } from '../domain/ports/customer.repository';
 import type { CustomerSummary, CustomerDetail } from '../domain/customer.types';
 
@@ -12,7 +13,7 @@ export class CustomerService {
     const summaries = await this.customerRepository.listSummaries(tenantId);
     // Highest spender first — the one sort order the mockup's own
     // customers() screen uses (descending tổng mua).
-    return summaries.sort((a, b) => Number(b.totalSpent) - Number(a.totalSpent));
+    return summaries.sort((a, b) => compareMoney(b.totalSpent, a.totalSpent));
   }
 
   /**

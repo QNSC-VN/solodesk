@@ -28,5 +28,6 @@ export interface IOrderRepository {
     lines: ResolvedOrderLine[],
     tx: Db,
   ): Promise<Order>;
-  updateStatus(id: string, tenantId: string, status: OrderStatus, tx?: Db): Promise<void>;
+  /** Guarded `confirmed -> returned` flip — `false` = the order was not in `confirmed` (already returned/cancelled, or lost the race). The race arbiter for returns. */
+  markReturned(id: string, tenantId: string, tx?: Db): Promise<boolean>;
 }

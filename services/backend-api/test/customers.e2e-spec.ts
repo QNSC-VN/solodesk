@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { db } from '../src/db/client';
 import { tenants } from '../src/db/schema/tenants';
+import { orders } from '../src/db/schema/orders';
 import { skus } from '../src/db/schema/skus';
 import { withTenantTransaction, runWithTenant } from '../src/platform/tenant-context';
 import { LotDrizzleRepository } from '../src/modules/catalog-inventory/infrastructure/persistence/lot.drizzle-repository';
@@ -123,7 +125,11 @@ describe('Customer aggregate (real Postgres, no mocks — no stored Customer ent
   it('a cancelled order never counts toward a customer\'s spend', async () => {
     const tenantId = await seedTenant('Customer Test — Cancelled Excluded');
     const order = await placeOrder(tenantId, 'Bà Tư', 'counter', '80000.00');
-    await runWithTenant(tenantId, () => orderRepo.updateStatus(order.id, tenantId, 'cancelled'));
+    // Test-only mutation: production code reaches 'cancelled' only via the guarded transitions
+    // (markReturned/cancelForReturn); a raw update keeps this fixture independent of them.
+    await withTenantTransaction(db, tenantId, (tx) =>
+      tx.update(orders).set({ status: 'cancelled' }).where(eq(orders.id, order.id)),
+    );
 
     const customers = await runWithTenant(tenantId, () => customerService.listCustomers(tenantId));
     expect(customers.find((c) => c.name === 'Bà Tư')).toBeUndefined();

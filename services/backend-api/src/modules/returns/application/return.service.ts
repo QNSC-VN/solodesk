@@ -30,7 +30,7 @@ export class ReturnService {
     @Inject(PAYMENT_REPOSITORY) private readonly paymentRepository: IPaymentRepository,
   ) {}
 
-  async returnOrder(tenantId: string, input: CreateReturnInput, idempotencyKey: string): Promise<Return> {
+  async returnOrder(tenantId: string, idempotencyKey: string, input: CreateReturnInput): Promise<Return> {
     assertTenantMatchesSession(tenantId);
 
     return withTenantTransaction(db, tenantId, (tx) =>
@@ -51,6 +51,19 @@ export class ReturnService {
           throw new ConflictException('NO_INVOICE_TO_RETURN', `Invoice ${invoice.id} is already cancelled.`);
         }
 
+        // The guarded order flip is the RACE ARBITER, so it runs first: its
+        // row lock serializes concurrent returns, the loser sees 0 rows and
+        // throws before any stock credit or refund is written (and the
+        // transaction rolls back regardless — effects below are atomic).
+        const flipped = await this.orderRepository.markReturned(order.id, tenantId, tx);
+        if (!flipped) {
+          throw new ConflictException('ORDER_NOT_RETURNABLE', `Order ${order.id} is no longer confirmed (lost the return race or already returned).`);
+        }
+        const invoiceCancelled = await this.invoiceRepository.cancelForReturn(invoice.id, tenantId, tx);
+        if (!invoiceCancelled) {
+          throw new ConflictException('NO_INVOICE_TO_RETURN', `Invoice ${invoice.id} is no longer issued (lost the return race).`);
+        }
+
         for (const line of order.lines) {
           await this.lotRepository.creditReturn(line.lotId, tenantId, line.quantity, order.id, tx);
         }
@@ -64,9 +77,6 @@ export class ReturnService {
           await this.paymentRepository.create(tenantId, { invoiceId: invoice.id, method: input.refundMethod, amount: paidAmount, type: 'refund' }, tx);
           refundAmount = paidAmount;
         }
-
-        await this.orderRepository.updateStatus(order.id, tenantId, 'returned', tx);
-        await this.invoiceRepository.updateStatus(invoice.id, tenantId, 'cancelled', tx);
 
         return this.returnRepository.create(
           tenantId,

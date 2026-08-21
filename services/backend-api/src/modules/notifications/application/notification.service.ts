@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { db, type Db } from '../../../db/client';
 import { withTenantTransactionOrReuse } from '../../../platform/tenant-context';
 import { notifications } from '../../../db/schema/notifications';
@@ -77,10 +77,10 @@ export class NotificationService {
   async unreadCount(tenantId: string, userId: string): Promise<number> {
     return withTenantTransactionOrReuse(db, tenantId, undefined, async (tx) => {
       const rows = await tx
-        .select()
+        .select({ n: count() })
         .from(notifications)
         .where(and(eq(notifications.tenantId, tenantId), eq(notifications.userId, userId), eq(notifications.isRead, false)));
-      return rows.length;
+      return rows[0]?.n ?? 0;
     });
   }
 

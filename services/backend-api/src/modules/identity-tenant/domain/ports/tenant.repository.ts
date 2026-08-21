@@ -28,6 +28,8 @@ export const TENANT_MEMBER_REPOSITORY = Symbol('TENANT_MEMBER_REPOSITORY');
 
 export interface ITenantMemberRepository {
   listByTenant(tenantId: string): Promise<TenantMember[]>;
+  /** The notification fan-out shape three callers hand-rolled (`listByTenant().filter(role === 'owner')`). */
+  listOwners(tenantId: string): Promise<TenantMember[]>;
   findByUserId(tenantId: string, userId: string): Promise<TenantMember | null>;
   add(member: Omit<TenantMember, 'id'>, tx?: Db): Promise<TenantMember>;
   /**

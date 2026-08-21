@@ -98,9 +98,17 @@ export class OrderDrizzleRepository implements IOrderRepository {
     return full!;
   }
 
-  async updateStatus(id: string, tenantId: string, status: OrderStatus, outerTx?: Db): Promise<void> {
+  async markReturned(id: string, tenantId: string, outerTx?: Db): Promise<boolean> {
+    // Single guarded UPDATE (atomicUpdate's pattern): two concurrent returns
+    // serialize on the order row's lock; the loser re-evaluates the guard
+    // against the winner's committed 'returned' and changes zero rows.
     return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
-      await tx.update(orders).set({ status }).where(and(eq(orders.id, id), eq(orders.tenantId, tenantId)));
+      const rows = await tx
+        .update(orders)
+        .set({ status: 'returned' })
+        .where(and(eq(orders.id, id), eq(orders.tenantId, tenantId), eq(orders.status, 'confirmed')))
+        .returning({ id: orders.id });
+      return rows.length > 0;
     });
   }
 }

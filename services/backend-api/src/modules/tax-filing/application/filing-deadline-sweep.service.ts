@@ -6,6 +6,7 @@ import { FILING_REPOSITORY, type IFilingRepository } from '../domain/ports/filin
 import { TENANT_MEMBER_REPOSITORY, type ITenantMemberRepository } from '../../identity-tenant/domain/ports/tenant.repository';
 import { NotificationService } from '../../notifications/application/notification.service';
 import { currentQuarter, filingDeadline } from '../domain/filing-period';
+import { daysUntil } from '../../../platform/vn-time';
 
 const WARN_WITHIN_DAYS = 14; // matches the mockup's own deadline-card `warn` threshold
 
@@ -56,10 +57,10 @@ export class FilingDeadlineSweepService {
     if (alreadyFiled) return false;
 
     const deadline = filingDeadline(quarter, year);
-    const daysRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    const daysRemaining = daysUntil(now, deadline.toISOString().slice(0, 10));
     if (daysRemaining > WARN_WITHIN_DAYS) return false;
 
-    const owners = (await this.memberRepository.listByTenant(tenantId)).filter((m) => m.role === 'owner');
+    const owners = await this.memberRepository.listOwners(tenantId);
     if (owners.length === 0) return false;
 
     const deadlineLabel = deadline.toISOString().slice(0, 10);

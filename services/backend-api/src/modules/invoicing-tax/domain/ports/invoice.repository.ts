@@ -23,5 +23,6 @@ export interface IInvoiceRepository {
   sumIssuedSubtotalSince(tenantId: string, since: Date): Promise<string>;
   /** Assigns the next per-tenant invoice number and inserts — `tx` MUST be the same transaction as the caller's `withIdempotency` key-insert (see `InvoiceService.issueInvoice`). */
   create(tenantId: string, input: CreateInvoiceInput, tx: Db): Promise<Invoice>;
-  updateStatus(id: string, tenantId: string, status: InvoiceStatus, tx?: Db): Promise<void>;
+  /** Guarded `issued -> cancelled` flip for the returns flow — `false` = not in `issued` (lost the race or already cancelled). */
+  cancelForReturn(id: string, tenantId: string, tx?: Db): Promise<boolean>;
 }

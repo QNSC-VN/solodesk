@@ -5,7 +5,8 @@ import { tenants } from '../../../db/schema/tenants';
 import { COMPLIANCE_REPOSITORY, type IComplianceRepository } from '../domain/ports/compliance.repository';
 import { TENANT_MEMBER_REPOSITORY, type ITenantMemberRepository } from '../../identity-tenant/domain/ports/tenant.repository';
 import { NotificationService } from '../../notifications/application/notification.service';
-import { deriveStatus, daysUntil } from '../domain/compliance.types';
+import { deriveStatus } from '../domain/compliance.types';
+import { daysUntil } from '../../../platform/vn-time';
 
 /** The mockup's escalation point — its deadline items flip from warn to todo under 30 days (`d < 30 ? 'todo' : 'warn'`), and a notification is worth the owner's attention exactly there, not at the visual-only 90-day mark. */
 const NOTIFY_WITHIN_DAYS = 30;
@@ -57,7 +58,7 @@ export class DocExpirySweepService {
     });
     if (expiring.length === 0) return false;
 
-    const owners = (await this.memberRepository.listByTenant(tenantId)).filter((m) => m.role === 'owner');
+    const owners = await this.memberRepository.listOwners(tenantId);
     if (owners.length === 0) return false;
 
     for (const doc of expiring) {

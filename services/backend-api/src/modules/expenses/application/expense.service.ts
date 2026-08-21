@@ -3,6 +3,7 @@ import { NotFoundException } from '@qnsc-vn/platform-http';
 import { db } from '../../../db/client';
 import { assertTenantMatchesSession, withTenantTransaction } from '../../../platform/tenant-context';
 import { withIdempotency } from '../../../platform/idempotency';
+import { monthWindowUtc } from '../../../platform/vn-time';
 import { sumMoney } from '../../../platform/money';
 import { EXPENSE_REPOSITORY, type IExpenseRepository } from '../domain/ports/expense.repository';
 import type { Expense, CreateExpenseInput, ExpenseFilters, ExpenseSummary, ExpenseCategory } from '../domain/expense.types';
@@ -60,13 +61,8 @@ export class ExpenseService {
   }
 }
 
-/** Same fixed-UTC+7, no-DST reasoning as `tax-filing`'s `filing-period.ts` — a VN-only app, no timezone library needed. */
+/** The VN-local month window comes from `platform/vn-time.ts` — the one home for UTC+7 boundary math. */
 function currentMonthWindow(): ExpenseFilters {
-  const now = new Date();
-  const vn = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-  const year = vn.getUTCFullYear();
-  const month = vn.getUTCMonth();
-  const from = new Date(Date.UTC(year, month, 1, -7, 0, 0));
-  const to = new Date(Date.UTC(year, month + 1, 1, -7, 0, 0));
-  return { from, to };
+  const { start, end } = monthWindowUtc(new Date());
+  return { from: start, to: end };
 }

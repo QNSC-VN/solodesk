@@ -30,10 +30,10 @@ describe('Compliance documents — real Postgres, no mocks', () => {
   it('derives status at read time: missing / expired / expiring / valid, plus the incomplete count', async () => {
     const tenantId = await seedTenantWithOwner('Compliance Tenant Derive');
     await runWithTenant(tenantId, async () => {
-      await service.createDocument(tenantId, { docType: 'Giấy ATTP', documentNumber: 'GL-0412/2024', expiresOn: '2027-01-01' }, `k-${Date.now()}-1`);
-      await service.createDocument(tenantId, { docType: 'Mẫu nhãn', isMandatory: true }, `k-${Date.now()}-2`); // no number = missing
-      await service.createDocument(tenantId, { docType: 'Kiểm nghiệm', documentNumber: 'KN-9', expiresOn: '2026-08-01' }, `k-${Date.now()}-3`); // past
-      await service.createDocument(tenantId, { docType: 'ATTP2', documentNumber: 'GL-99', expiresOn: '2026-10-15' }, `k-${Date.now()}-4`); // ~55 days = expiring (≤90)
+      await service.createDocument(tenantId, `k-${Date.now()}-1`, { docType: 'Giấy ATTP', documentNumber: 'GL-0412/2024', expiresOn: '2027-01-01' });
+      await service.createDocument(tenantId, `k-${Date.now()}-2`, { docType: 'Mẫu nhãn', isMandatory: true }); // no number = missing
+      await service.createDocument(tenantId, `k-${Date.now()}-3`, { docType: 'Kiểm nghiệm', documentNumber: 'KN-9', expiresOn: '2026-08-01' }); // past
+      await service.createDocument(tenantId, `k-${Date.now()}-4`, { docType: 'ATTP2', documentNumber: 'GL-99', expiresOn: '2026-10-15' }); // ~55 days = expiring (≤90)
     });
 
     const list = await runWithTenant(tenantId, () => service.listDocuments(tenantId));
@@ -48,7 +48,7 @@ describe('Compliance documents — real Postgres, no mocks', () => {
   it('update edits the row (renewal = new expiresOn), delete removes it', async () => {
     const tenantId = await seedTenantWithOwner('Compliance Tenant Update');
     const created = await runWithTenant(tenantId, () =>
-      service.createDocument(tenantId, { docType: 'Đăng kiểm PTTS', documentNumber: 'DK-1', expiresOn: '2026-09-30' }, `k-${Date.now()}-5`),
+      service.createDocument(tenantId, `k-${Date.now()}-5`, { docType: 'Đăng kiểm PTTS', documentNumber: 'DK-1', expiresOn: '2026-09-30' }),
     );
 
     const renewed = await runWithTenant(tenantId, () =>
@@ -65,10 +65,10 @@ describe('Compliance documents — real Postgres, no mocks', () => {
   it('an idempotent create replays the same document, a fresh key creates a new row', async () => {
     const tenantId = await seedTenantWithOwner('Compliance Tenant Idem');
     const key = `k-${Date.now()}-6`;
-    const first = await runWithTenant(tenantId, () => service.createDocument(tenantId, { docType: 'TX', documentNumber: 'TX-1' }, key));
-    const replay = await runWithTenant(tenantId, () => service.createDocument(tenantId, { docType: 'TX', documentNumber: 'TX-1' }, key));
+    const first = await runWithTenant(tenantId, () => service.createDocument(tenantId, key, { docType: 'TX', documentNumber: 'TX-1' }));
+    const replay = await runWithTenant(tenantId, () => service.createDocument(tenantId, key, { docType: 'TX', documentNumber: 'TX-1' }));
     expect(replay.id).toBe(first.id);
-    const second = await runWithTenant(tenantId, () => service.createDocument(tenantId, { docType: 'TX', documentNumber: 'TX-2' }, `k-${Date.now()}-7`));
+    const second = await runWithTenant(tenantId, () => service.createDocument(tenantId, `k-${Date.now()}-7`, { docType: 'TX', documentNumber: 'TX-2' }));
     expect(second.id).not.toBe(first.id);
     const list = await runWithTenant(tenantId, () => service.listDocuments(tenantId));
     expect(list).toHaveLength(2);
@@ -78,9 +78,9 @@ describe('Compliance documents — real Postgres, no mocks', () => {
     const tenantId = await seedTenantWithOwner('Compliance Tenant Sweep');
     // 10 days out → notify; far future → silent; missing → silent.
     await runWithTenant(tenantId, async () => {
-      await service.createDocument(tenantId, { docType: 'ATTP gần hạn', documentNumber: 'N-1', expiresOn: futureDate(10) }, `k-${Date.now()}-8`);
-      await service.createDocument(tenantId, { docType: 'ATTP xa', documentNumber: 'N-2', expiresOn: futureDate(200) }, `k-${Date.now()}-9`);
-      await service.createDocument(tenantId, { docType: 'ATTP thiếu', isMandatory: true }, `k-${Date.now()}-10`);
+      await service.createDocument(tenantId, `k-${Date.now()}-8`, { docType: 'ATTP gần hạn', documentNumber: 'N-1', expiresOn: futureDate(10) });
+      await service.createDocument(tenantId, `k-${Date.now()}-9`, { docType: 'ATTP xa', documentNumber: 'N-2', expiresOn: futureDate(200) });
+      await service.createDocument(tenantId, `k-${Date.now()}-10`, { docType: 'ATTP thiếu', isMandatory: true });
     });
 
     const firstRun = await sweep.sweep();
@@ -102,7 +102,7 @@ describe('Compliance documents — real Postgres, no mocks', () => {
   it("one tenant's documents are invisible to another (RLS scoping)", async () => {
     const tenantA = await seedTenantWithOwner('Compliance Tenant Iso A');
     const tenantB = await seedTenantWithOwner('Compliance Tenant Iso B');
-    await runWithTenant(tenantA, () => service.createDocument(tenantA, { docType: 'Chỉ A', documentNumber: 'A-1' }, `k-${Date.now()}-11`));
+    await runWithTenant(tenantA, () => service.createDocument(tenantA, `k-${Date.now()}-11`, { docType: 'Chỉ A', documentNumber: 'A-1' }));
     const listB = await runWithTenant(tenantB, () => service.listDocuments(tenantB));
     expect(listB).toHaveLength(0);
   });

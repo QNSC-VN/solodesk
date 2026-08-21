@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { assertTenantMatchesSession } from '../../../platform/tenant-context';
 import { multiplyMoney, addMoney, compareMoney } from '../../../platform/money';
+import { yearWindowUtc } from '../../../platform/vn-time';
 import { REVENUE_REPOSITORY, type IRevenueRepository } from '../domain/ports/revenue.repository';
 import { RATE_GROUP_REPOSITORY, type IRateGroupRepository } from '../domain/ports/rate-group.repository';
 import { FILING_REPOSITORY, type IFilingRepository } from '../domain/ports/filing.repository';
@@ -36,7 +37,7 @@ export class TaxEstimateService {
     const { start, end } = quarterWindowUtc(period.quarter, period.year);
 
     const tenant = await this.tenantService.getTenant(tenantId);
-    const yearStart = new Date(Date.UTC(period.year, 0, 1, -7, 0, 0));
+    const yearStart = yearWindowUtc(period.year).start;
     const [revenue, yearToDateRevenue, taxRule, filing] = await Promise.all([
       this.revenueRepository.sumConfirmedRevenue(tenantId, start, end),
       // The mockup's `mienThue` gate is a YEAR-cumulative check

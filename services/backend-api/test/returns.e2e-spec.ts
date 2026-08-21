@@ -67,6 +67,27 @@ async function seedInvoicedOrder(legalName: string, unitPrice: string, quantity 
 }
 
 describe('Returns — full-order reversal (order + invoice + payment + stock) — real Postgres, no mocks', () => {
+  it('two CONCURRENT returns with different idempotency keys: exactly one wins, no double refund, no double stock credit', async () => {
+    const { tenantId, skuId, order, invoice } = await seedInvoicedOrder('Return Test Tenant Race', '50000.00');
+    await runWithTenant(tenantId, () => paymentService.recordPayment(tenantId, { invoiceId: invoice.id, method: 'cash', amount: invoice.totalAmount }));
+
+    const stamp = Date.now();
+    const results = await Promise.allSettled([
+      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `race-a-${stamp}`, { orderId: order.id, reason: 'race a', refundMethod: 'cash' })),
+      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `race-b-${stamp}`, { orderId: order.id, reason: 'race b', refundMethod: 'cash' })),
+    ]);
+    const winners = results.filter((r) => r.status === 'fulfilled');
+    expect(winners).toHaveLength(1);
+
+    // Stock credited EXACTLY once (10 received - 1 sold + 1 credit = 10), one
+    // refund row, one return row — the pre-fix bug double-credited all three.
+    expect((await lotRepo.getAvailableQuantity(skuId, tenantId)).totalAvailable).toBe('10.000');
+    const returns = await returnRepo.listByTenant(tenantId);
+    expect(returns).toHaveLength(1);
+    const refunds = await paymentRepo.listByInvoice(invoice.id, tenantId);
+    expect(refunds.filter((p) => p.type === 'refund')).toHaveLength(1);
+  });
+
   it('a return on a paid, fully-invoiced order credits stock back, cancels the invoice, and refunds the paid amount', async () => {
     const { tenantId, skuId, order, invoice } = await seedInvoicedOrder('Return Test Tenant Full', '100000.00');
     await runWithTenant(tenantId, () => paymentService.recordPayment(tenantId, { invoiceId: invoice.id, method: 'cash', amount: invoice.totalAmount }));
@@ -74,7 +95,7 @@ describe('Returns — full-order reversal (order + invoice + payment + stock) �
     const before = await lotRepo.getAvailableQuantity(skuId, tenantId); // 10 received - 1 sold = 9
 
     const result = await runWithTenant(tenantId, () =>
-      returnService.returnOrder(tenantId, { orderId: order.id, reason: 'Khách trả hàng', refundMethod: 'cash' }, `ret-test-key-${Date.now()}`),
+      returnService.returnOrder(tenantId, `ret-test-key-${Date.now()}`, { orderId: order.id, reason: 'Khách trả hàng', refundMethod: 'cash' }),
     );
 
     expect(result.refundAmount).toBe(invoice.totalAmount);
@@ -106,7 +127,7 @@ describe('Returns — full-order reversal (order + invoice + payment + stock) �
     const { tenantId, order, invoice } = await seedInvoicedOrder('Return Test Tenant Unpaid', '50000.00');
 
     const result = await runWithTenant(tenantId, () =>
-      returnService.returnOrder(tenantId, { orderId: order.id, reason: 'Đổi ý' }, `ret-test-key-unpaid-${Date.now()}`),
+      returnService.returnOrder(tenantId, `ret-test-key-unpaid-${Date.now()}`, { orderId: order.id, reason: 'Đổi ý' }),
     );
 
     expect(result.refundAmount).toBe('0.00'); // numeric(14,2) column formats the stored '0' back out with scale
@@ -121,16 +142,16 @@ describe('Returns — full-order reversal (order + invoice + payment + stock) �
     await runWithTenant(tenantId, () => paymentService.recordPayment(tenantId, { invoiceId: invoice.id, method: 'cash', amount: invoice.totalAmount }));
 
     await expect(
-      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'Thiếu phương thức hoàn tiền' }, `ret-test-key-missing-${Date.now()}`)),
+      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `ret-test-key-missing-${Date.now()}`, { orderId: order.id, reason: 'Thiếu phương thức hoàn tiền' })),
     ).rejects.toThrow();
   });
 
   it('returning an already-returned order is rejected', async () => {
     const { tenantId, order } = await seedInvoicedOrder('Return Test Tenant Already Returned', '60000.00');
-    await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'first return' }, `ret-test-key-first-${Date.now()}`));
+    await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `ret-test-key-first-${Date.now()}`, { orderId: order.id, reason: 'first return' }));
 
     await expect(
-      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'second attempt' }, `ret-test-key-second-${Date.now()}`)),
+      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `ret-test-key-second-${Date.now()}`, { orderId: order.id, reason: 'second attempt' })),
     ).rejects.toThrow();
   });
 
@@ -151,7 +172,7 @@ describe('Returns — full-order reversal (order + invoice + payment + stock) �
     );
 
     await expect(
-      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'no invoice yet' }, `ret-test-key-noinv-${Date.now()}`)),
+      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `ret-test-key-noinv-${Date.now()}`, { orderId: order.id, reason: 'no invoice yet' })),
     ).rejects.toThrow();
   });
 
@@ -160,8 +181,8 @@ describe('Returns — full-order reversal (order + invoice + payment + stock) �
     await runWithTenant(tenantId, () => paymentService.recordPayment(tenantId, { invoiceId: invoice.id, method: 'cash', amount: invoice.totalAmount }));
     const key = `ret-test-idempotent-key-${Date.now()}`;
 
-    const first = await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'retry test', refundMethod: 'cash' }, key));
-    const retried = await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'retry test', refundMethod: 'cash' }, key));
+    const first = await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, key, { orderId: order.id, reason: 'retry test', refundMethod: 'cash' }));
+    const retried = await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, key, { orderId: order.id, reason: 'retry test', refundMethod: 'cash' }));
 
     expect(retried.id).toBe(first.id);
 
@@ -175,10 +196,10 @@ describe('Returns — full-order reversal (order + invoice + payment + stock) �
 
   it('a genuinely new request with a different idempotency key on an already-returned order is still correctly rejected', async () => {
     const { tenantId, order } = await seedInvoicedOrder('Return Test Tenant New Key Rejected', '70000.00');
-    await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'first' }, `ret-test-diffkey-a-${Date.now()}`));
+    await runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `ret-test-diffkey-a-${Date.now()}`, { orderId: order.id, reason: 'first' }));
 
     await expect(
-      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, { orderId: order.id, reason: 'second, different key' }, `ret-test-diffkey-b-${Date.now()}`)),
+      runWithTenant(tenantId, () => returnService.returnOrder(tenantId, `ret-test-diffkey-b-${Date.now()}`, { orderId: order.id, reason: 'second, different key' })),
     ).rejects.toThrow();
   });
 });

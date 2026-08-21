@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { eq, and, isNull, desc, count } from 'drizzle-orm';
 import { db } from '../../../../db/client';
 import { messages } from '../../../../db/schema/messages';
 import { withTenantTransaction } from '../../../../platform/tenant-context';
@@ -59,6 +59,16 @@ export class MessageDrizzleRepository implements IMessageRepository {
         )
         .orderBy(desc(messages.createdAt));
       return rows.map(toDomain);
+    });
+  }
+
+  async countUnanswered(tenantId: string): Promise<number> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .select({ n: count() })
+        .from(messages)
+        .where(and(eq(messages.tenantId, tenantId), isNull(messages.repliedAt)));
+      return rows[0]?.n ?? 0;
     });
   }
 

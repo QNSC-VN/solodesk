@@ -1,26 +1,22 @@
 /**
- * Pure calendar-quarter math, Asia/Ho_Chi_Minh (fixed UTC+7, no DST — no
- * timezone library needed for a VN-only app). Shared by
- * `TaxEstimateService` (the read path) and the filing-deadline sweep (the
- * reminder path) so both agree on exactly the same quarter windows.
+ * The tax-filing calendar rules, Asia/Ho_Chi_Minh (fixed UTC+7, no DST).
+ * The generic window math lives in ONE place — `platform/vn-time.ts` —
+ * shared with expenses' month window, tax-estimate's year window, and
+ * compliance's day counting; this file keeps only what is
+ * tax-filing-specific (the deadline rule) plus re-exports so existing
+ * callers read one vocabulary.
  */
+import { currentQuarterOf, quarterWindowUtc as platformQuarterWindowUtc } from '../../../platform/vn-time';
 
-const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+export { quarterWindowUtc } from '../../../platform/vn-time';
 
 /** The calendar quarter/year `asOf` falls in, read as Asia/Ho_Chi_Minh wall-clock. */
 export function currentQuarter(asOf: Date): { quarter: number; year: number } {
-  const vn = new Date(asOf.getTime() + VN_OFFSET_MS);
-  return { quarter: Math.floor(vn.getUTCMonth() / 3) + 1, year: vn.getUTCFullYear() };
+  return currentQuarterOf(asOf);
 }
 
-/** Half-open `[start, end)` UTC instants spanning the given VN calendar quarter. */
-export function quarterWindowUtc(quarter: number, year: number): { start: Date; end: Date } {
-  const startMonth = (quarter - 1) * 3; // 0-indexed
-  const start = new Date(Date.UTC(year, startMonth, 1, -7, 0, 0));
-  const wraps = startMonth + 3 >= 12;
-  const end = new Date(Date.UTC(wraps ? year + 1 : year, (startMonth + 3) % 12, 1, -7, 0, 0));
-  return { start, end };
-}
+/** Kept as an alias: the platform name is the canonical one. */
+export const quarterWindow = platformQuarterWindowUtc;
 
 /**
  * The mockup's own rule (`sm-domain.js`'s `deadlines()`), ported verbatim:

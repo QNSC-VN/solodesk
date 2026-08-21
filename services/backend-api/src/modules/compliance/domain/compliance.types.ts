@@ -1,3 +1,5 @@
+import { daysUntil } from '../../../platform/vn-time';
+
 export interface ComplianceDocument {
   id: string;
   tenantId: string;
@@ -39,12 +41,6 @@ export interface UpdateComplianceDocumentInput {
 export type ComplianceDocumentStatus = 'missing' | 'expired' | 'expiring' | 'valid';
 
 export const EXPIRY_WARN_DAYS = 90;
-
-export function daysUntil(asOf: Date, dateStr: string): number {
-  const target = new Date(`${dateStr}T00:00:00Z`).getTime();
-  const today = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
-  return Math.round((target - today) / (24 * 60 * 60 * 1000));
-}
 
 export function deriveStatus(doc: Pick<ComplianceDocument, 'documentNumber' | 'expiresOn'>, asOf: Date): ComplianceDocumentStatus {
   if (!doc.documentNumber) return 'missing';

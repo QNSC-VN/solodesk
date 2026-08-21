@@ -26,8 +26,7 @@ export class MessageService {
 
   async getUnansweredCount(tenantId: string): Promise<number> {
     assertTenantMatchesSession(tenantId);
-    const unanswered = await this.messageRepository.listByTenant(tenantId, { unansweredOnly: true });
-    return unanswered.length;
+    return this.messageRepository.countUnanswered(tenantId);
   }
 
   async getMessage(id: string, tenantId: string): Promise<Message> {

@@ -3,6 +3,7 @@ import { ConflictException, NotFoundException } from '@qnsc-vn/platform-http';
 import { db } from '../../../db/client';
 import { assertTenantMatchesSession, withTenantTransaction } from '../../../platform/tenant-context';
 import { withIdempotency } from '../../../platform/idempotency';
+import { yearWindowUtc, currentQuarterOf } from '../../../platform/vn-time';
 import { addMoney, compareMoney } from '../../../platform/money';
 import { INVOICE_REPOSITORY, type IInvoiceRepository } from '../domain/ports/invoice.repository';
 import { TaxCalculationService } from './tax-calculation.service';
@@ -57,7 +58,10 @@ export class InvoiceService {
         const asOf = new Date();
         const { taxRule, taxAmount, totalAmount } = await this.taxCalculationService.calculate(tenant.industry, order.totalAmount, asOf);
 
-        const yearStart = new Date(Date.UTC(asOf.getUTCFullYear(), 0, 1));
+        // VN-local year window — the SAME definition tax-filing's exemption
+        // gate uses. A UTC boundary here let an order at 23:30 UTC Dec 31 land
+        // in a different "cumulative year" than the exemption check.
+        const yearStart = yearWindowUtc(currentQuarterOf(asOf).year).start;
         const cumulativeBefore = await this.invoiceRepository.sumIssuedSubtotalSince(tenantId, yearStart);
         const projectedCumulative = addMoney(cumulativeBefore, order.totalAmount);
         const requiresEInvoice = compareMoney(projectedCumulative, taxRule.annualRevenueThreshold) >= 0;
@@ -82,7 +86,7 @@ export class InvoiceService {
         );
 
         if (justCrossed) {
-          const owners = (await this.memberRepository.listByTenant(tenantId)).filter((m) => m.role === 'owner');
+          const owners = await this.memberRepository.listOwners(tenantId);
           for (const owner of owners) {
             await this.notificationService.notify(
               tenantId,

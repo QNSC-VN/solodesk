@@ -34,6 +34,16 @@ export class TenantMemberDrizzleRepository implements ITenantMemberRepository {
     });
   }
 
+  async listOwners(tenantId: string): Promise<TenantMember[]> {
+    return withTenantTransaction(db, tenantId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(tenantMembers)
+        .where(and(eq(tenantMembers.tenantId, tenantId), eq(tenantMembers.role, 'owner')));
+      return rows.map(toDomain);
+    });
+  }
+
   async findByUserId(tenantId: string, userId: string): Promise<TenantMember | null> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const rows = await tx

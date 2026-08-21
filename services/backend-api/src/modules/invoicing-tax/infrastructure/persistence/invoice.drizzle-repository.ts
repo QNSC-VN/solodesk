@@ -119,9 +119,14 @@ export class InvoiceDrizzleRepository implements IInvoiceRepository {
     return toDomain(rows[0]!);
   }
 
-  async updateStatus(id: string, tenantId: string, status: InvoiceStatus, outerTx?: Db): Promise<void> {
+  async cancelForReturn(id: string, tenantId: string, outerTx?: Db): Promise<boolean> {
     return withTenantTransactionOrReuse(db, tenantId, outerTx, async (tx) => {
-      await tx.update(invoices).set({ status }).where(and(eq(invoices.id, id), eq(invoices.tenantId, tenantId)));
+      const rows = await tx
+        .update(invoices)
+        .set({ status: 'cancelled' })
+        .where(and(eq(invoices.id, id), eq(invoices.tenantId, tenantId), eq(invoices.status, 'issued')))
+        .returning({ id: invoices.id });
+      return rows.length > 0;
     });
   }
 }

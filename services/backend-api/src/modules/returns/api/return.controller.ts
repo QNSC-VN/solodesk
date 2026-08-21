@@ -30,7 +30,7 @@ export class ReturnController {
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key header is required.');
     }
-    const created = await this.returnService.returnOrder(getCurrentTenantId(), dto, idempotencyKey);
+    const created = await this.returnService.returnOrder(getCurrentTenantId(), idempotencyKey, dto);
     return toDto(created);
   }
 
