@@ -1,4 +1,4 @@
-import { ApplicationFailure } from '@temporalio/common';
+import { internalServiceFetch } from '../../../platform/internal-service';
 
 export interface SetBusinessProfileInput {
   tenantId: string;
@@ -44,29 +44,13 @@ export const setBusinessProfileToolSchema = {
  * ml-analytics, 3rd: this service -> connector-hub's vault, below).
  */
 export async function setBusinessProfile(input: SetBusinessProfileInput): Promise<SetBusinessProfileResult> {
-  const baseUrl = process.env.BACKEND_API_BASE_URL ?? 'http://localhost:3000/v1';
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) {
-    throw ApplicationFailure.nonRetryable('INTERNAL_SERVICE_TOKEN is not set.', 'ConfigError');
-  }
-
-  const res = await fetch(`${baseUrl}/internal/onboarding/tenants/${input.tenantId}/profile`, {
+  const json = (await internalServiceFetch('backend-api', `/internal/onboarding/tenants/${input.tenantId}/profile`, {
     method: 'POST',
-    headers: { 'X-Internal-Service-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    body: {
       ...(input.legalName !== undefined ? { legalName: input.legalName } : {}),
       ...(input.industry !== undefined ? { industry: input.industry } : {}),
-    }),
-  });
+    },
+  })) as { legalName: string; industry: string };
 
-  if (!res.ok) {
-    const body = await res.text();
-    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-      throw ApplicationFailure.nonRetryable(`backend-api returned ${res.status}: ${body}`, 'BackendApiNonRetryableError');
-    }
-    throw new Error(`backend-api returned ${res.status}: ${body}`);
-  }
-
-  const body = (await res.json()) as { legalName: string; industry: string };
-  return { legalName: body.legalName, industry: body.industry };
+  return { legalName: json.legalName, industry: json.industry };
 }

@@ -1,4 +1,4 @@
-import { ApplicationFailure } from '@temporalio/common';
+import { internalServiceFetch } from '../../../platform/internal-service';
 
 export interface ConnectSepayInput {
   tenantId: string;
@@ -39,26 +39,9 @@ export const connectSepayToolSchema = {
 };
 
 export async function connectSepay(input: ConnectSepayInput): Promise<ConnectSepayResult> {
-  const baseUrl = process.env.CONNECTOR_HUB_BASE_URL ?? 'http://localhost:3001/v1';
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) {
-    throw ApplicationFailure.nonRetryable('INTERNAL_SERVICE_TOKEN is not set.', 'ConfigError');
-  }
-
-  const res = await fetch(`${baseUrl}/internal/onboarding/vault/${input.tenantId}/sepay/credentials`, {
+  const json = (await internalServiceFetch('connector-hub', `/internal/onboarding/vault/${input.tenantId}/sepay/credentials`, {
     method: 'POST',
-    headers: { 'X-Internal-Service-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payload: { apiToken: input.apiToken } }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-      throw ApplicationFailure.nonRetryable(`connector-hub returned ${res.status}: ${body}`, 'ConnectorHubNonRetryableError');
-    }
-    throw new Error(`connector-hub returned ${res.status}: ${body}`);
-  }
-
-  const body = (await res.json()) as { provider: string; isActive: boolean };
-  return { provider: body.provider, isActive: body.isActive };
+    body: { payload: { apiToken: input.apiToken } },
+  })) as { provider: string; isActive: boolean };
+  return { provider: json.provider, isActive: json.isActive };
 }

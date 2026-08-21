@@ -3,24 +3,8 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { getCurrentTenantId } from '../../../platform/tenant-context';
 import { VaultService } from '../application/vault.service';
 import { SetCredentialsDto, StoredCredentialResponseDto } from './vault.dto';
-import { CONNECTOR_PROVIDERS, type ConnectorProvider, type StoredCredential } from '../domain/vault.types';
+import { CONNECTOR_PROVIDERS, type ConnectorProvider, type StoredCredential, parseProvider, toCredentialMetadataDto } from '../domain/vault.types';
 
-function parseProvider(value: string): ConnectorProvider {
-  if (!(CONNECTOR_PROVIDERS as readonly string[]).includes(value)) {
-    throw new BadRequestException(`Unknown provider "${value}". Must be one of: ${CONNECTOR_PROVIDERS.join(', ')}.`);
-  }
-  return value as ConnectorProvider;
-}
-
-function toDto(c: StoredCredential): StoredCredentialResponseDto {
-  return {
-    provider: c.provider,
-    isActive: c.isActive,
-    lastVerifiedAt: c.lastVerifiedAt,
-    lastVerificationOk: c.lastVerificationOk,
-    updatedAt: c.updatedAt,
-  };
-}
 
 @ApiTags('vault')
 @Controller('vault')
@@ -32,14 +16,14 @@ export class VaultController {
   async setCredentials(@Param('provider') providerParam: string, @Body() dto: SetCredentialsDto): Promise<StoredCredentialResponseDto> {
     const provider = parseProvider(providerParam);
     const stored = await this.vaultService.setCredentials(getCurrentTenantId(), { provider, payload: dto.payload });
-    return toDto(stored);
+    return toCredentialMetadataDto(stored);
   }
 
   @Get()
   @ApiOperation({ summary: "List which providers the caller's tenant has configured — metadata only, never the secret" })
   async list(): Promise<StoredCredentialResponseDto[]> {
     const list = await this.vaultService.listProviders(getCurrentTenantId());
-    return list.map(toDto);
+    return list.map(toCredentialMetadataDto);
   }
 
   @Delete(':provider/credentials')
@@ -47,7 +31,7 @@ export class VaultController {
   async deactivate(@Param('provider') providerParam: string): Promise<StoredCredentialResponseDto> {
     const provider = parseProvider(providerParam);
     const stored = await this.vaultService.deactivate(getCurrentTenantId(), provider);
-    return toDto(stored);
+    return toCredentialMetadataDto(stored);
   }
 
   @Get(':provider/webhook-url')

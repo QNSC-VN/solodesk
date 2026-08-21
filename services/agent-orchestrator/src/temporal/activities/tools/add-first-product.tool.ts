@@ -1,4 +1,4 @@
-import { ApplicationFailure } from '@temporalio/common';
+import { internalServiceFetch } from '../../../platform/internal-service';
 
 export interface AddFirstProductInput {
   tenantId: string;
@@ -48,27 +48,10 @@ export const addFirstProductToolSchema = {
 
 /** Same cross-service Activity-only calling discipline as `get-sales-forecast.tool.ts`/`set-business-profile.tool.ts`. */
 export async function addFirstProduct(input: AddFirstProductInput): Promise<AddFirstProductResult> {
-  const baseUrl = process.env.BACKEND_API_BASE_URL ?? 'http://localhost:3000/v1';
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) {
-    throw ApplicationFailure.nonRetryable('INTERNAL_SERVICE_TOKEN is not set.', 'ConfigError');
-  }
-
   const skuCode = generateSkuCode(input.name);
-  const res = await fetch(`${baseUrl}/internal/onboarding/tenants/${input.tenantId}/skus`, {
+  const json = (await internalServiceFetch('backend-api', `/internal/onboarding/tenants/${input.tenantId}/skus`, {
     method: 'POST',
-    headers: { 'X-Internal-Service-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ skuCode, name: input.name, unit: input.unit, unitPrice: input.unitPrice }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-      throw ApplicationFailure.nonRetryable(`backend-api returned ${res.status}: ${body}`, 'BackendApiNonRetryableError');
-    }
-    throw new Error(`backend-api returned ${res.status}: ${body}`);
-  }
-
-  const body = (await res.json()) as { skuCode: string; name: string; unitPrice: string };
-  return { skuCode: body.skuCode, name: body.name, unitPrice: body.unitPrice };
+    body: { skuCode, name: input.name, unit: input.unit, unitPrice: input.unitPrice },
+  })) as { skuCode: string; name: string; unitPrice: string };
+  return { skuCode: json.skuCode, name: json.name, unitPrice: json.unitPrice };
 }

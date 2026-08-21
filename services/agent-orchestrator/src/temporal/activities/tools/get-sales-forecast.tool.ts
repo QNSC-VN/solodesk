@@ -1,4 +1,4 @@
-import { ApplicationFailure } from '@temporalio/common';
+import { internalServiceFetch } from '../../../platform/internal-service';
 
 export interface GetSalesForecastInput {
   tenantId: string;
@@ -41,27 +41,11 @@ export const getSalesForecastToolSchema = {
  * connector-hub — same shape, no redesign needed.
  */
 export async function getSalesForecast(input: GetSalesForecastInput): Promise<GetSalesForecastResult> {
-  const baseUrl = process.env.ML_ANALYTICS_BASE_URL ?? 'http://localhost:3003';
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) {
-    throw ApplicationFailure.nonRetryable('INTERNAL_SERVICE_TOKEN is not set.', 'ConfigError');
-  }
-
-  const url = new URL(`${baseUrl}/v1/forecast/${input.tenantId}`);
-  if (input.days !== undefined) url.searchParams.set('days', String(input.days));
-
-  const res = await fetch(url, { headers: { 'X-Internal-Service-Token': token } });
-  if (!res.ok) {
-    const body = await res.text();
-    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-      throw ApplicationFailure.nonRetryable(`ml-analytics returned ${res.status}: ${body}`, 'MlAnalyticsNonRetryableError');
-    }
-    throw new Error(`ml-analytics returned ${res.status}: ${body}`);
-  }
-
-  const body = (await res.json()) as { history_days_used: number; forecast: Array<{ day: string; projected_amount: string }> };
+  const json = (await internalServiceFetch('ml-analytics', `/v1/forecast/${input.tenantId}`, {
+    ...(input.days !== undefined ? { query: { days: String(input.days) } } : {}),
+  })) as { history_days_used: number; forecast: Array<{ day: string; projected_amount: string }> };
   return {
-    historyDaysUsed: body.history_days_used,
-    forecast: body.forecast.map((p) => ({ day: p.day, projectedAmount: p.projected_amount })),
+    historyDaysUsed: json.history_days_used,
+    forecast: json.forecast.map((p) => ({ day: p.day, projectedAmount: p.projected_amount })),
   };
 }

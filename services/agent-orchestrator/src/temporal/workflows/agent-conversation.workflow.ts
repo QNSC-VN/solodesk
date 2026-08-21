@@ -1,16 +1,11 @@
 import { proxyActivities, defineUpdate, defineQuery, setHandler, condition } from '@temporalio/workflow';
 import type * as activities from '../activities';
-import type { StepDescriptor } from '../activities';
+import type { ConversationMessage, StepDescriptor } from '../activities';
 
 const { runAgentTurn } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 seconds',
   retry: { maximumAttempts: 3 },
 });
-
-export interface ConversationMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
 
 export interface SendMessageResult {
   assistantMessage: string;
@@ -54,8 +49,11 @@ export async function agentConversationWorkflow(tenantId: string, mode: 'assista
   let messageReceived = false;
 
   setHandler(sendMessageUpdate, async (userMessage: string): Promise<SendMessageResult> => {
-    const { assistantMessage, step } = await runAgentTurn({ tenantId, history, userMessage, mode });
+    // The USER message is appended BEFORE the Activity resolves — update
+    // handlers can interleave, and two rapid messages completing out of
+    // order used to checkpoint as swapped turn pairs.
     history.push({ role: 'user', content: userMessage });
+    const { assistantMessage, step } = await runAgentTurn({ tenantId, history, userMessage, mode });
     history.push({ role: 'assistant', content: assistantMessage });
     messageReceived = true;
     return { assistantMessage, ...(step ? { step } : {}) };

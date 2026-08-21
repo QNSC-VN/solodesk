@@ -69,7 +69,13 @@ export class ConnectorVerificationService {
     if (!payload) {
       throw new NotFoundException('CREDENTIAL_NOT_FOUND', `No credentials configured for provider "${provider}" — set them via POST /v1/vault/${provider}/credentials first.`);
     }
-    const adapter = this.adapters.get(provider)!;
+    const adapter = this.adapters.get(provider);
+    // zalo (and any future webhook-only provider) is in the catalog but has
+    // no adapter by design — verify() must say so honestly, not crash on a
+    // non-null assertion the registry gap silently violates.
+    if (!adapter) {
+      throw new NotFoundException('ADAPTER_NOT_IMPLEMENTED', `Provider "${provider}" has no adapter to verify against yet.`);
+    }
     try {
       const ok = await adapter.verifyCredentials(payload);
       await this.vaultService.recordVerificationResult(tenantId, provider, ok);

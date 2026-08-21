@@ -21,17 +21,6 @@ function toMetadata(row: typeof credentials.$inferSelect): StoredCredential {
 
 @Injectable()
 export class CredentialDrizzleRepository implements ICredentialRepository {
-  async findMetadataByProvider(tenantId: string, provider: ConnectorProvider): Promise<StoredCredential | null> {
-    return withTenantTransaction(db, tenantId, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(credentials)
-        .where(and(eq(credentials.tenantId, tenantId), eq(credentials.provider, provider)))
-        .limit(1);
-      return rows[0] ? toMetadata(rows[0]) : null;
-    });
-  }
-
   async listMetadataByTenant(tenantId: string): Promise<StoredCredential[]> {
     return withTenantTransaction(db, tenantId, async (tx) => {
       const rows = await tx.select().from(credentials).where(eq(credentials.tenantId, tenantId));

@@ -4,7 +4,6 @@ import type { ConnectorProvider, StoredCredential } from '../vault.types';
 export const CREDENTIAL_REPOSITORY = Symbol('CREDENTIAL_REPOSITORY');
 
 export interface ICredentialRepository {
-  findMetadataByProvider(tenantId: string, provider: ConnectorProvider): Promise<StoredCredential | null>;
   listMetadataByTenant(tenantId: string): Promise<StoredCredential[]>;
   /** The ONLY method that returns ciphertext — callers must decrypt via `EncryptionService` immediately, never persist or log the result. */
   findEncryptedByProvider(tenantId: string, provider: ConnectorProvider): Promise<EncryptedPayload | null>;

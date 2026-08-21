@@ -1,21 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsObject } from 'class-validator';
-
-const CONNECTOR_PROVIDERS = [
-  'sepay',
-  'ghn',
-  'shopee',
-  'tiktok_shop',
-  'lazada',
-  'ghtk',
-  'viettelpost',
-  'misa_meinvoice',
-  'viettel_sinvoice',
-  'vnpt_invoice',
-  'booking_com',
-  'agoda',
-  'national_free_platform',
-] as const;
+// The ONE canonical provider list lives in the domain — a private copy here
+// had already drifted (missing zalo) from the very constant whose comment
+// promises the two can never drift apart.
+import { CONNECTOR_PROVIDERS } from '../domain/vault.types';
 
 export class SetCredentialsDto {
   @ApiProperty({

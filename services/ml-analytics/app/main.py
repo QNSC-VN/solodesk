@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Query
 from pydantic import BaseModel
@@ -39,7 +39,10 @@ async def get_forecast(tenant_id: str, days: int = Query(default=7, ge=1, le=30)
     outside a Workflow/Activity, the exact gap `cxgenie-be`'s raw
     synchronous calls to `cxgenie-core-ai` left open (see CLAUDE.md).
     """
-    since = date.today() - timedelta(days=HISTORY_WINDOW_DAYS)
+    # VN-local calendar date (fixed UTC+7) — same discipline every sibling
+    # service pins; a UTC date.today() skews the window edge by up to 7 hours.
+    vn_today = datetime.now(timezone(timedelta(hours=7))).date()
+    since = vn_today - timedelta(days=HISTORY_WINDOW_DAYS)
     async with tenant_connection(tenant_id) as conn:
         rows = await conn.fetch(
             """

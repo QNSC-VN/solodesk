@@ -52,3 +52,33 @@ export interface SetCredentialsInput {
   provider: ConnectorProvider;
   payload: CredentialPayload;
 }
+
+import { BadRequestException } from '@nestjs/common';
+
+/** Parse-and-validate a provider path segment against the ONE canonical list — the triplicated `includes()` + BadRequest blocks in three controllers, now one function. */
+export function parseProvider(value: string): ConnectorProvider {
+  const provider = CONNECTOR_PROVIDERS.find((p) => p === value);
+  if (!provider) {
+    throw new BadRequestException(`Unknown provider "${value}". Must be one of: ${CONNECTOR_PROVIDERS.join(', ')}.`);
+  }
+  return provider;
+}
+
+/** The credential metadata shape every controller returns — the duplicated toDto mappers, now one. */
+export interface CredentialMetadataDto {
+  provider: ConnectorProvider;
+  isActive: boolean;
+  lastVerifiedAt: Date | null;
+  lastVerificationOk: boolean | null;
+  updatedAt: Date;
+}
+
+export function toCredentialMetadataDto(c: StoredCredential): CredentialMetadataDto {
+  return {
+    provider: c.provider,
+    isActive: c.isActive,
+    lastVerifiedAt: c.lastVerifiedAt,
+    lastVerificationOk: c.lastVerificationOk,
+    updatedAt: c.updatedAt,
+  };
+}

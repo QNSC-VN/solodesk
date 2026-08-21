@@ -6,17 +6,8 @@ import { InternalServiceGuard } from '../../../platform/internal-service.guard';
 import { runWithTenant } from '../../../platform/tenant-context';
 import { VaultService } from '../application/vault.service';
 import { SetCredentialsDto, StoredCredentialResponseDto } from './vault.dto';
-import { CONNECTOR_PROVIDERS, type ConnectorProvider, type StoredCredential } from '../domain/vault.types';
+import { CONNECTOR_PROVIDERS, type ConnectorProvider, type StoredCredential, parseProvider, toCredentialMetadataDto } from '../domain/vault.types';
 
-function toDto(c: StoredCredential): StoredCredentialResponseDto {
-  return {
-    provider: c.provider,
-    isActive: c.isActive,
-    lastVerifiedAt: c.lastVerifiedAt,
-    lastVerificationOk: c.lastVerificationOk,
-    updatedAt: c.updatedAt,
-  };
-}
 
 /**
  * Service-to-service only — agent-orchestrator's `connect_sepay` onboarding
@@ -43,11 +34,8 @@ export class InternalOnboardingVaultController {
     @Param('provider') providerParam: string,
     @Body() dto: SetCredentialsDto,
   ): Promise<StoredCredentialResponseDto> {
-    if (!(CONNECTOR_PROVIDERS as readonly string[]).includes(providerParam)) {
-      throw new BadRequestException(`Unknown provider "${providerParam}". Must be one of: ${CONNECTOR_PROVIDERS.join(', ')}.`);
-    }
-    const provider = providerParam as ConnectorProvider;
+    const provider = parseProvider(providerParam);
     const stored = await runWithTenant(tenantId, () => this.vaultService.setCredentials(tenantId, { provider, payload: dto.payload }));
-    return toDto(stored);
+    return toCredentialMetadataDto(stored);
   }
 }

@@ -15,5 +15,9 @@ from app.config import settings
 
 
 async def require_internal_service_token(x_internal_service_token: str | None = Header(default=None)) -> None:
-    if x_internal_service_token is None or not hmac.compare_digest(x_internal_service_token, settings.internal_service_token):
+    # compare over BYTES: the str overload requires ASCII on both sides, so a
+    # crafted non-ASCII header raised TypeError (a 500) instead of a clean 403.
+    if x_internal_service_token is None or not hmac.compare_digest(
+        x_internal_service_token.encode(), settings.internal_service_token.encode()
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing or incorrect X-Internal-Service-Token header.")

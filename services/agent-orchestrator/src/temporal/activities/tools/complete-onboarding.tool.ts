@@ -1,4 +1,4 @@
-import { ApplicationFailure } from '@temporalio/common';
+import { internalServiceFetch } from '../../../platform/internal-service';
 
 export interface CompleteOnboardingInput {
   tenantId: string;
@@ -32,25 +32,8 @@ export const completeOnboardingToolSchema = {
 
 /** Same cross-service Activity-only calling discipline as the other onboarding tools. */
 export async function completeOnboarding(input: CompleteOnboardingInput): Promise<CompleteOnboardingResult> {
-  const baseUrl = process.env.BACKEND_API_BASE_URL ?? 'http://localhost:3000/v1';
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) {
-    throw ApplicationFailure.nonRetryable('INTERNAL_SERVICE_TOKEN is not set.', 'ConfigError');
-  }
-
-  const res = await fetch(`${baseUrl}/internal/onboarding/tenants/${input.tenantId}/complete`, {
+  const json = (await internalServiceFetch('backend-api', `/internal/onboarding/tenants/${input.tenantId}/complete`, {
     method: 'POST',
-    headers: { 'X-Internal-Service-Token': token },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-      throw ApplicationFailure.nonRetryable(`backend-api returned ${res.status}: ${body}`, 'BackendApiNonRetryableError');
-    }
-    throw new Error(`backend-api returned ${res.status}: ${body}`);
-  }
-
-  const body = (await res.json()) as { activatedAt: string | null };
-  return { activatedAt: body.activatedAt };
+  })) as { activatedAt: string | null };
+  return { activatedAt: json.activatedAt };
 }

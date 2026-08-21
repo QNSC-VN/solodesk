@@ -57,15 +57,26 @@ export class SepayWebhookController {
         throw new PermissionDeniedException('SEPAY_WEBHOOK_AUTH_FAILED', 'Authorization header does not match this tenant\'s configured webhook secret.');
       }
 
+      // Mirrors the Zalo webhook's guards: a payload without a dedup key
+      // must be REJECTED, not deduped on the literal string "undefined"
+      // (which would silently swallow every later id-less delivery).
+      const providerEventId = String(body['id'] ?? '');
+      if (!providerEventId) {
+        throw new NotFoundException('TRANSACTION_ID_MISSING', 'Payload carries no id to dedup on.');
+      }
+
       const rawDate = String(body['transactionDate'] ?? '');
       // "YYYY-MM-DD HH:mm:ss", Vietnam local time (UTC+7, no DST) — NOT UTC,
       // appending "Z" directly would silently misdate every event by 7 hours.
-      const occurredAt = new Date(`${rawDate.replace(' ', 'T')}+07:00`);
+      // Absent date falls back to now instead of an Invalid Date that 500s.
+      const occurredAt = rawDate
+        ? new Date(`${rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T')}+07:00`)
+        : new Date();
 
       const { event, isNew } = await this.webhookIntakeService.recordEvent({
         tenantId: resolved.tenantId,
         provider: 'sepay',
-        providerEventId: String(body['id']),
+        providerEventId,
         eventType: 'payment.received',
         occurredAt,
         payload: body,

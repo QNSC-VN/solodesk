@@ -5,9 +5,9 @@ import {
   agentConversationWorkflow,
   sendMessageUpdate,
   getHistoryQuery,
-  type ConversationMessage,
   type SendMessageResult,
 } from '../../../temporal/workflows/agent-conversation.workflow';
+import type { ConversationMessage } from '../../../temporal/activities/run-agent-turn.activity';
 
 function workflowId(tenantId: string, conversationId: string): string {
   return `agent-conv-${tenantId}-${conversationId}`;
