@@ -3026,3 +3026,86 @@ verification failure against SePay's real API flipped the chip to
 a cold app restart, the screen returned to "Chưa cấu hình" exactly as
 the (now absent) vault state says. Throwaway smoke accounts left in
 the local dev DB (harmless); the test credential row was deleted.
+
+## Inbound customer messaging — backlog gap #5
+
+Real research first found the mockup has TWO inbox concepts: "Hộp thư
+đến" (a grader-facing event simulator with a "giả lập sự kiện" button
+panel — a DEMO TOOL, not a product screen) and "Hội thoại với khách"
+(the real feature: a FLAT customer-message list — no threads, "unread"
+== `!daTraLoi` — Zalo as the ONLY inbound chat channel in the mockup's
+entire world, replies drafted by a canned regex engine, plus debt
+reminders and order-from-message). Only v1's honest core loop is built;
+everything else is a named cut below.
+
+What IS built, full chain real: `POST /v1/webhooks/zalo/:token`
+(connector-hub, `zalo-webhook.controller.ts`) copies the SePay webhook
+skeleton — `vault.webhook_tokens` resolution, `sync.webhook_events`
+dedup on the global `(provider, provider_event_id)`, the same
+deliberately-uncaught forward (provider redelivery IS the retry,
+`forwarded_at` stays NULL until success) — and forwards to backend-api's
+new `POST /internal/messages/inbound` (`@Public` + `@SkipTenantContext`
++ `InternalServiceGuard`, same shape as the payments forward). One
+deliberate difference from SePay: NO second auth factor — there is no
+vaulted webhook secret because there is no OA account to obtain one
+from; the unguessable token IS the trust boundary (the same design
+`vault.webhook_tokens` itself documents), and the controller comment
+says exactly when to add the secret check. `zalo` joined
+`ConnectorProvider` + `CONNECTOR_PROVIDERS` (the status screen honestly
+shows it "Chưa hỗ trợ" — `IMPLEMENTED_CONNECTOR_PROVIDERS` deliberately
+excludes it: "implemented" means "has a callable adapter", and it
+doesn't). This deduplicated a REAL pre-existing DRY violation found in
+the process: `db/schema/credentials.ts` carried its own 13-value copy
+of the provider union that had silently drifted from the domain's — the
+schema now imports the ONE canonical type from `vault.types.ts`.
+Payload field names (`messageId`/`maNguoiDung`/`khach`/`luc`/`noiDung`)
+mirror the mockup's own simulated shape — the REAL Zalo OA webhook
+contract is unverified (the mockup itself marks Zalo freshness
+"chưa đo — Q-034"), and the controller says so.
+
+backend-api `messaging` module (migration `0017`): one RLS table
+`messaging.messages` (UNIQUE `(tenant_id, source_event_id)` backstop;
+`onConflictDoNothing` insert = friendly redelivery no-op, same stance
+as the payments forward), `MessageService` (reply = single guarded
+UPDATE on `replied_at IS NULL`, so concurrent/double replies lose
+cleanly and surface one friendly 409 `MESSAGE_ALREADY_REPLIED`), app
+routes `GET /v1/messages[?unanswered=true]`, `GET
+/v1/messages/unanswered-count`, `GET /v1/messages/:id`, `POST
+/v1/messages/:id/reply`. The reply is RECORDED, not sent — no real
+Zalo outbound API exists (the mockup itself only enqueues a simulated
+send), and the mobile snackbar says "Đã lưu trả lời — tin đã được đánh
+dấu trả lời", never claiming a delivery that didn't happen.
+
+Mobile: `MessagesScreen` (flat list, unanswered rows tinted with a gold
+"Chưa trả lời" badge, NotificationsTab conventions) and
+`MessageDetailScreen` (full text, reply box, "Gửi trả lời"); Home's row
+3 became three buttons with "Tin nhắn (n)" carrying the live unanswered
+count (fetched in Home's parallel load, degrading to label-without-count
+offline).
+
+Explicit cuts versus the mockup (all named): NO AI-drafted replies (the
+mockup's is a canned regex engine; a REAL draft belongs in
+agent-orchestrator as a future tool, not a synchronous LLM call inside
+backend-api), no debt-reminder-via-chat, no order-from-message (the
+mockup built the function but gave it NO UI caller either), no Zalo
+send-window/pricing (unverified, Q-005), no event-simulator screen
+(grader tool), no b2g reminder channel, no attachments, no threads.
+
+Verified for real: backend-api typecheck clean, e2e 112/112 (4 new:
+record+list+count, redelivery no-op, reply+409-on-double-reply, tenant
+isolation); connector-hub `tsc` clean, e2e 21/21 (3 new: wrong-provider
+token rejected, ingest+forward-once+dedup-redelivery, missing-field
+rejection — the ingested event id is unique per run because
+`webhook_events`' unique is GLOBAL, a rerun-collision found by actually
+rerunning); migration `0017` applied to the real dev Postgres. Full
+live-chain curl: minted token → `GET /v1/vault/zalo/webhook-url` →
+real POST to the webhook (the UTC+7 `luc` parsed to the right instant)
+→ `forwarded: true` → `GET /v1/messages` returns it. Real emulator
+pass: Home shows "Tin nhắn (1)", the inbox lists the message with the
+unanswered highlight, the reply flow stores the answer (DB-confirmed
+`replied_at`), the list re-renders with a green "Đã trả lời" badge, and
+the app list correctly shows ONLY this tenant's row while the DB holds
+several other tenants' test messages — RLS isolation visible on-device.
+(The emulator's system clock drifted +14h mid-session — display
+timestamps in the screenshots are skewed by that; `.toLocal()` logic is
+correct and the stored UTC instants are exact.)
